@@ -230,7 +230,10 @@ export function chooseOptions(req, catalog) {
       const key = JSON.stringify(p.selection);
       if (!seen.has(key)) { seen.add(key); all.push(p); }
     }
-  const ok = all.filter((p) => p.total <= req.budget_inr);
+  // A country visit should cover 2+ cities when it can. If only a one-city package fits the budget, we still offer it.
+  const inBudget = all.filter((p) => p.total <= req.budget_inr);
+  const multi = inBudget.filter((p) => p.selection.stays.length >= 2);
+  const ok = multi.length ? multi : inBudget;
   if (ok.length === 0) return { options: [], cheapest: all.sort((a, b) => a.total - b.total)[0] ?? null };
   const best = (cmp) => [...ok].sort(cmp)[0];
   const winners = [

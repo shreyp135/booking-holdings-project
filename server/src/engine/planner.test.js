@@ -4,7 +4,7 @@ import { buildCatalog } from '../catalog/indexes.js';
 import { validateRequest } from './request.js';
 import { validateTrip } from './validator.js';
 import { enumerateCityPlans } from './cityplans.js';
-import { planTrip } from './planner.js';
+import { findPackages, planTrip } from './planner.js';
 import { assignAttractions } from './schedule.js';
 
 const catalog = buildCatalog();
@@ -14,10 +14,10 @@ const menonBody = {
 };
 const plan = (body) => planTrip(validateRequest(body, catalog).value, catalog);
 
-test('city plans for 6 nights in Japan: 18 + 6 = 24 (one-city stays are left out)', () => {
+test('city plans for 6 nights in Japan: 3 + 18 + 6 = 27', () => {
   const japan = catalog.countryByName.get('Japan');
   const plans = enumerateCityPlans(japan, 6, 2);
-  assert.equal(plans.length, 24);
+  assert.equal(plans.length, 27);
   for (const p of plans) {
     assert.equal(p.reduce((s, c) => s + c.nights, 0), 6);
     assert.ok(p.every((c) => c.nights >= 2));
@@ -41,11 +41,11 @@ test('a date outside the data window: no package, with the reason', () => {
 });
 
 test('a budget that is too small: says so and shows the cheapest total', () => {
-  const ok = plan(menonBody);
+  const cheapest = findPackages(validateRequest(menonBody, catalog).value, catalog).packages[0].total; // cheapest of ALL valid packages
   const res = plan({ ...menonBody, budget_inr: 50000 });
   assert.equal(res.status, 'OVER_BUDGET');
-  assert.equal(res.cheapest_total_inr, ok.total_inr); // same cheapest package as with the big budget
-  assert.equal(res.over_by_inr, ok.total_inr - 50000);
+  assert.equal(res.cheapest_total_inr, cheapest);
+  assert.equal(res.over_by_inr, cheapest - 50000);
   assert.ok(res.suggestions.length >= 1);
 });
 

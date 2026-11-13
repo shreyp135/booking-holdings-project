@@ -96,14 +96,14 @@ export default function ChangePanel({ tripId, version, onChange, busy, startTab 
 
       {tab === 'Flights' && ['arrival', 'return'].map((dir) => (
         <div key={dir} className="mb-4">
-          <h4 className="font-bold capitalize text-blue-700">{dir} flight</h4>
+          <h4 className="font-bold text-blue-700">{dir === 'arrival' ? 'Departure' : 'Return'} flight</h4>
           {options.flights[dir].length === 0 && <p className="text-sm text-slate-500">No other flights work for this trip.</p>}
           <ul>
             {options.flights[dir].map((f) => (
               <Row key={f.flight_id} busy={busy} current={f.current} d={f.delta_inr}
                 title={f.name}
                 sub={`${f.departure_local.replace('T', ' ')} → ${f.arrival_local.replace('T', ' ')} · ${f.stops === 0 ? 'direct' : `${f.stops} stop`} · ${hm(f.duration_minutes)} · ${inr(f.price_per_seat)}/seat`}
-                action={() => onChange({ type: 'SET_FLIGHT', direction: dir, flight_id: f.flight_id }, `${dir[0].toUpperCase() + dir.slice(1)} flight changed to ${f.name}`)} />
+                action={() => onChange({ type: 'SET_FLIGHT', direction: dir, flight_id: f.flight_id }, `${dir === 'arrival' ? 'Departure' : 'Return'} flight changed to ${f.name}`)} />
             ))}
           </ul>
         </div>

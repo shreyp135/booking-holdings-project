@@ -11,7 +11,7 @@ const label = (p) => p.map((x) => `${x.city} (${x.nights})`).join(' → ');
 export function builderPlans(req, catalog) {
   const { data_window: w } = catalog.rules;
   if (req.start_date < w.first_night || req.end_date > w.last_departure) return [];
-  const plans = enumerateCityPlans(catalog.countryByName.get(req.country), req.nights, catalog.rules.min_nights_per_city);
+  const plans = enumerateCityPlans(catalog.countryByName.get(req.country), req.nights, catalog.rules.min_nights_per_city, true);
   return buildPackagesForPlans(req, plans, catalog, { noAttractions: true })
     .filter((x) => x.result.ok)
     .map((x) => ({ plan: x.plan, label: label(x.plan), total_inr: x.result.pkg.total, result: x.result }))

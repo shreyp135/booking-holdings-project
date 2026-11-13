@@ -3,7 +3,8 @@
 //  - every city has at least `minPerCity` nights, each city appears once
 //  - the nights add up to the trip length
 //  - each pair of neighbouring cities must have a transfer link in destinations.json
-export function enumerateCityPlans(country, nights, minPerCity) {
+// multiOnly: leave out one-city plans when two or more cities are possible (used for what we OFFER the traveler).
+export function enumerateCityPlans(country, nights, minPerCity, multiOnly = false) {
   const names = country.cities.map((c) => c.name);
   const linked = new Set(country.links.map((l) => `${l.from_city}>${l.to_city}`));
   const maxCities = Math.floor(nights / minPerCity);
@@ -29,8 +30,7 @@ export function enumerateCityPlans(country, nights, minPerCity) {
     }
   };
   walk([]);
-  // This is a country visit, not a one-city stay: whenever the trip is long enough to visit two or more
-  // cities, plans that stay in a single city are left out.
+  if (!multiOnly) return plans;
   const multi = plans.filter((p) => p.length >= 2);
   return multi.length ? multi : plans;
 }

@@ -63,6 +63,7 @@ export default function BuilderPage({ request, initialPkg = null, onCreated }) {
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
   const [toast, setToast] = useState(null);
+  const [overOpen, setOverOpen] = useState(false);
 
   useEffect(() => {
     api.builderPlans(request).then((r) => setPlans(r.plans)).catch((e) => setError(e.message));
@@ -176,8 +177,22 @@ export default function BuilderPage({ request, initialPkg = null, onCreated }) {
           )}
         </div>
 
-        <BudgetBox pkg={pkg} request={request} onReview={() => onCreated(pkg)} />
+        <BudgetBox pkg={pkg} request={request} onReview={() => (pkg.trip.total_inr > request.budget_inr ? setOverOpen(true) : onCreated(pkg))} />
       </div>
+      {overOpen && pkg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in" onClick={() => setOverOpen(false)}>
+          <div role="alertdialog" aria-modal="true" aria-labelledby="over-title" onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl animate-pop">
+            <h2 id="over-title" className="text-xl font-bold text-red-700">Your trip is over budget</h2>
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between"><dt className="text-slate-500">Trip total</dt><dd className="font-semibold tabular-nums">{inr(pkg.trip.total_inr)}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-500">Your budget</dt><dd className="font-semibold tabular-nums">{inr(request.budget_inr)}</dd></div>
+              <div className="flex justify-between border-t border-slate-100 pt-2"><dt className="font-semibold text-red-700">Over by</dt><dd className="font-bold tabular-nums text-red-700">{inr(pkg.trip.total_inr - request.budget_inr)}</dd></div>
+            </dl>
+            <p className="mt-4 text-sm text-slate-600">A trip over budget cannot be reviewed or booked. Remove attractions, choose cheaper hotels or flights, or pick other cities, then try again.</p>
+            <button type="button" onClick={() => setOverOpen(false)} className="mt-5 w-full rounded-lg bg-blue-700 py-2.5 font-semibold text-white transition hover:bg-blue-800 active:scale-95">Keep editing</button>
+          </div>
+        </div>
+      )}
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );

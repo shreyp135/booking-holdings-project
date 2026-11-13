@@ -407,29 +407,30 @@ export function ResultNotice({ result, onBack }) {
       </div>
     );
 
+  // Over budget: no package screen, only what is wrong and what the traveler can do.
   const trip = result.cheapest_trip;
+  const short = trip ? trip.total_inr - trip.budget_inr : 0;
   return (
-    <div className="space-y-6">
-      <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 animate-fade-up">
-        <h2 className="text-lg font-bold text-red-800">This trip is over your budget</h2>
-        <p className="mt-1 text-red-900">{result.message}</p>
+    <div className="mx-auto max-w-2xl space-y-5 animate-fade-up">
+      <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6">
+        <h1 className="text-2xl font-bold text-red-800">This trip is over your budget</h1>
+        <p className="mt-2 text-red-900">{result.message}</p>
+        {trip && (
+          <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg bg-white p-3"><dt className="text-xs text-slate-500">Cheapest possible trip</dt><dd className="text-xl font-bold tabular-nums">{inr(trip.total_inr)}</dd></div>
+            <div className="rounded-lg bg-white p-3"><dt className="text-xs text-slate-500">Your budget</dt><dd className="text-xl font-bold tabular-nums">{inr(trip.budget_inr)}</dd></div>
+            <div className="rounded-lg bg-white p-3"><dt className="text-xs text-slate-500">Over by</dt><dd className="text-xl font-bold tabular-nums text-red-600">{inr(short)}</dd></div>
+          </dl>
+        )}
         {result.suggestions?.length > 0 && (
           <>
-            <p className="mt-3 text-sm font-semibold text-red-900">What you can change:</p>
+            <p className="mt-4 text-sm font-semibold text-red-900">What you can change:</p>
             <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-red-900">
               {result.suggestions.map((s) => <li key={s}>{s}</li>)}
             </ul>
           </>
         )}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button onClick={onBack} className="rounded-lg bg-blue-700 px-5 py-2.5 font-semibold text-white transition hover:bg-blue-800 active:scale-95">Change the trip</button>
-          <span className="text-sm text-red-900">The cheapest valid package is shown below.</span>
-        </div>
-      </div>
-      <Title trip={trip} />
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <DayPlan trip={trip} />
-        <Summary trip={trip} over busy={false} booked={false} />
+        <button onClick={onBack} className="mt-5 rounded-lg bg-blue-700 px-6 py-2.5 font-semibold text-white transition hover:bg-blue-800 active:scale-95">Change the trip</button>
       </div>
     </div>
   );

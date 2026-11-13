@@ -249,7 +249,7 @@ export function listOptions(trip, catalog, prefs = {}) {
 
   // cities (G3): every valid city plan, with the price difference of switching to it
   const creq = { ...sel.request, nights: daysBetween(sel.request.start_date, sel.request.end_date) };
-  const plans = enumerateCityPlans(catalog.countryByName.get(trip.country), creq.nights, catalog.rules.min_nights_per_city);
+  const plans = enumerateCityPlans(catalog.countryByName.get(trip.country), creq.nights, catalog.rules.min_nights_per_city, true);
   const here = sel.stays.map((s) => `${s.city}:${nightsBetween(s.from, s.to).length}`).join('|');
   for (const { plan, result } of buildPackagesForPlans(creq, plans, catalog)) {
     if (!result.ok) continue;
