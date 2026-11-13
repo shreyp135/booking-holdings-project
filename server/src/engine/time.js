@@ -63,3 +63,7 @@ export function inWindow(minOfDay, fromStr, untilStr) {
   if (until >= from) return minOfDay >= from && minOfDay <= until;
   return minOfDay >= from || minOfDay <= until;
 }
+
+
+// Absolute minutes (see absMin) -> local date-time string.
+export const fromAbs = (abs) => makeDateTime('1970-01-01', abs);

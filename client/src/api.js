@@ -14,5 +14,6 @@ async function request(path, options) {
 
 export const api = {
   destinations: () => request('/destinations'),
+  plan: (body) => request('/plan', { method: 'POST', body: JSON.stringify(body) }),   // <- new
   validateRequest: (body) => request('/requests/validate', { method: 'POST', body: JSON.stringify(body) }),
 };
