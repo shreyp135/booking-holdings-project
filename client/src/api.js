@@ -5,15 +5,24 @@ async function request(path, options) {
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    const err = new Error(data?.error || `Request failed (${res.status})`);
-    err.fields = data?.fields; // per-field messages from the backend (M1)
+    const err = new Error(data?.error || data?.reasons?.join(' ') || `Request failed (${res.status})`);
+    err.fields = data?.fields;   // per-field messages from the backend (M1)
+    err.reasons = data?.reasons; // why a change was refused (M6)
+    err.status = res.status;
     throw err;
   }
   return data;
 }
 
+const post = (path, body) => request(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
+
 export const api = {
   destinations: () => request('/destinations'),
-  plan: (body) => request('/plan', { method: 'POST', body: JSON.stringify(body) }),   // <- new
-  validateRequest: (body) => request('/requests/validate', { method: 'POST', body: JSON.stringify(body) }),
+  plan: (body) => post('/plan', body),
+  getPackage: (id) => request(`/packages/${id}`),
+  options: (id) => request(`/packages/${id}/options`),
+  change: (id, change) => post(`/packages/${id}/changes`, change),
+  confirm: (id) => post(`/packages/${id}/confirm`),
+  reservation: (ref) => request(`/reservations/${ref}`),
+  exportUrl: (id) => `/api/packages/${id}/export`,
 };
