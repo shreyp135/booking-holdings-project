@@ -10,7 +10,7 @@ import { attractionPrice, flightPrice, hotelPrice, minRooms } from './pricing.js
 // Build ONE package for ONE city plan. Returns { ok:true, pkg } or { ok:false, reason }.
 // ---------------------------------------------------------------------------
 function buildForPlan(plan, ctx) {
-  const { catalog, req, travelers, adults, children } = ctx;
+  const { catalog, req, travelers, adults, children, country } = ctx;
   const fail = (reason) => ({ ok: false, reason });
 
   // stays: the city, its dates, and its nights
@@ -46,7 +46,9 @@ function buildForPlan(plan, ctx) {
       let dep = null;
       if (isFirst) { arr = arrivalBest(ctx, s.city, o.hotel.area); if (!arr) continue; cost += arr.cost; }
       if (isLast) { dep = departureBest(ctx, s.city, o.hotel.area); if (!dep) continue; cost += dep.cost; }
-      if (!best || cost < best.cost) best = { o, arr, dep, cost };
+      const rated = ctx.mode === 'rated'; // best rated: most stars first, then cheapest
+      const better = !best || (rated && o.hotel.stars !== best.o.hotel.stars ? o.hotel.stars > best.o.hotel.stars : cost < best.cost);
+      if (better) best = { o, arr, dep, cost };
     }
     if (!best)
       return fail(`No valid airport flight + transfer combination for a ${s.city} hotel (service hours or time rules)`);
@@ -55,7 +57,7 @@ function buildForPlan(plan, ctx) {
 
   // attractions: one per full day. Every stay's first day is the arrival day or a city-change day.
   const visits = []; // { att, date, start, end }
-  for (const s of stays) {
+  for (const s of ctx.noAttractions ? [] : stays) {
     const fullDays = s.nights.slice(1);
     const pool = catalog.attractionsByCity.get(s.city) ?? [];
     const eligible = (a, d) => visitStart(a) !== null && a.open_days.includes(weekdayOf(d)) && !(a.closed_dates ?? []).includes(d);
@@ -80,7 +82,7 @@ function buildForPlan(plan, ctx) {
     stays: stays.map((s, i) => ({ city: s.city, from: s.from, to: s.to, hotel_id: chosen[i].o.hotel.hotel_id, room_id: chosen[i].o.room.room_id, k: chosen[i].o.k })),
     visits: visits.map((v) => ({ attraction_id: v.att.attraction_id, date: v.date, start: v.start })),
   };
-  const built = assembleTrip(selection, catalog, { firstPackage: true }); // safety gate: never return a package the validator rejects
+  const built = assembleTrip(selection, catalog, { firstPackage: !ctx.noAttractions }); // safety gate: never return a package the validator rejects
   if (!built.ok) return fail(`internal: ${built.errors[0].rule} ${built.errors[0].message}`);
 
   return {
@@ -120,7 +122,7 @@ function arrivalBest(ctx, city, area) {
     const tr = bestArrivalTransfer(ctx.catalog, f, city, area, ctx.adults, ctx.children, ctx.req.start_date);
     if (!tr) continue;
     const cand = { flight: f, ...tr, cost: flightPrice(f, ctx.travelers) + tr.cost, sameDay: tr.pickup >= dayStart(ctx.req.start_date) && tr.pickup < dayStart(ctx.req.start_date) + 1440 };
-    const better = !best || (cand.sameDay && !best.sameDay) || (cand.sameDay === best.sameDay && (cand.cost < best.cost || (cand.cost === best.cost && f.duration_minutes < best.flight.duration_minutes)));
+    const better = !best || (cand.sameDay && !best.sameDay) || (cand.sameDay === best.sameDay && betterFlight(ctx, cand, best));
     if (better) best = cand;
   }
   ctx.cache.set(key, best);
@@ -136,13 +138,21 @@ function departureBest(ctx, city, area) {
     const tr = bestDepartureTransfer(ctx.catalog, f, city, area, ctx.adults, ctx.children, ctx.req.end_date);
     if (!tr) continue;
     const cand = { flight: f, ...tr, cost: flightPrice(f, ctx.travelers) + tr.cost };
-    if (!best || cand.cost < best.cost || (cand.cost === best.cost && f.duration_minutes < best.flight.duration_minutes)) best = cand;
+    if (!best || betterFlight(ctx, cand, best)) best = cand;
   }
   ctx.cache.set(key, best);
   return best;
 }
 
 const dayStart = (date) => dayNumber(date) * 1440;
+
+// cheapest by default; in "fast" mode the shortest flight wins first, then the price
+function betterFlight(ctx, a, b) {
+  const da = a.flight.duration_minutes;
+  const db = b.flight.duration_minutes;
+  if (ctx.mode === 'fast' && da !== db) return da < db;
+  return a.cost < b.cost || (a.cost === b.cost && da < db);
+}
 
 // every hotel + room type + room count that fits the group and is free on every night
 function hotelOptions(ctx, stay) {
@@ -168,12 +178,28 @@ function hotelOptions(ctx, stay) {
 // ---------------------------------------------------------------------------
 
 // All packages we can build for this request (one per city plan), cheapest first.
-export function findPackages(req, catalog) {
-  const country = catalog.countryByName.get(req.country);
-  const ctx = {
-    catalog, req, country, cache: new Map(),
+// mode: 'cheap' (default), 'fast' (shortest flights) or 'rated' (most hotel stars)
+function makeCtx(req, catalog, mode = 'cheap', noAttractions = false) {
+  return {
+    catalog, req, country: catalog.countryByName.get(req.country), cache: new Map(), mode, noAttractions,
     adults: req.adults, children: req.children, travelers: req.adults + req.children,
   };
+}
+
+// One package for a given city plan (used when the traveler picks another city plan, G3, or builds their own).
+export function buildPackageForPlan(req, plan, catalog, opts = {}) {
+  return buildForPlan(plan, makeCtx(req, catalog, opts.mode, !!opts.noAttractions));
+}
+
+// Build packages for several city plans at once, sharing one cache. Returns [{ plan, result }].
+export function buildPackagesForPlans(req, plans, catalog, opts = {}) {
+  const ctx = makeCtx(req, catalog, opts.mode, !!opts.noAttractions);
+  return plans.map((plan) => ({ plan, result: buildForPlan(plan, ctx) }));
+}
+
+export function findPackages(req, catalog, mode = 'cheap') {
+  const ctx = makeCtx(req, catalog, mode);
+  const country = ctx.country;
   const { data_window: w } = catalog.rules;
   if (req.start_date < w.first_night || req.end_date > w.last_departure)
     return { packages: [], reasons: [`Flights and rooms only exist from ${w.first_night} to ${w.last_departure}. This trip runs ${req.start_date} to ${req.end_date}.`] };
@@ -192,7 +218,40 @@ export function findPackages(req, catalog) {
 
 const rupees = (n) => `₹${n.toLocaleString('en-IN')}`;
 
-// Answer a request: a package, "over budget" with the cheapest total, or "no package" with the reason.
+// G4: the three packages. Cheapest = lowest total. Fastest = least travel time (flight durations + transfers
+// between cities). Best rated = highest average hotel stars per night. All three must fit the budget.
+// If one package wins several of these it carries several labels; we then add the next cheapest
+// different packages so the traveler still has up to three to choose from.
+export function chooseOptions(req, catalog) {
+  const all = [];
+  const seen = new Set();
+  for (const mode of ['cheap', 'fast', 'rated'])
+    for (const p of findPackages(req, catalog, mode).packages) {
+      const key = JSON.stringify(p.selection);
+      if (!seen.has(key)) { seen.add(key); all.push(p); }
+    }
+  const ok = all.filter((p) => p.total <= req.budget_inr);
+  if (ok.length === 0) return { options: [], cheapest: all.sort((a, b) => a.total - b.total)[0] ?? null };
+  const best = (cmp) => [...ok].sort(cmp)[0];
+  const winners = [
+    ['Cheapest', best((a, b) => a.total - b.total)],
+    ['Fastest', best((a, b) => a.travelMinutes - b.travelMinutes || a.total - b.total)],
+    ['Best rated', best((a, b) => b.avgStars - a.avgStars || a.total - b.total)],
+  ];
+  const options = [];
+  for (const [label, pkg] of winners) {
+    const have = options.find((o) => o.pkg === pkg);
+    if (have) have.labels.push(label);
+    else options.push({ labels: [label], pkg });
+  }
+  for (const p of [...ok].sort((a, b) => a.total - b.total)) {
+    if (options.length >= 3) break;
+    if (!options.some((o) => o.pkg === p)) options.push({ labels: ['Another option'], pkg: p });
+  }
+  return { options, cheapest: options[0].pkg };
+}
+
+// Answer a request: packages to choose from, "over budget" with the cheapest total, or "no package" with the reason.
 export function planTrip(req, catalog) {
   const { packages, reasons } = findPackages(req, catalog);
 
@@ -219,14 +278,25 @@ export function planTrip(req, catalog) {
     };
   }
 
+  const { options } = chooseOptions(req, catalog);
   return {
     status: 'OK',
-    message: `Your holiday package is ready: ${cheapest.cities}.`,
-    trip: cheapest.trip,
-    cities: cheapest.cities,
-    total_inr: cheapest.total,
+    message: `We found ${options.length} holiday package${options.length > 1 ? 's' : ''} for you.`,
+    // the cheapest, kept at the top level for simple clients
+    trip: options[0].pkg.trip,
+    cities: options[0].pkg.cities,
+    total_inr: options[0].pkg.total,
     budget_inr: req.budget_inr,
-    balance_inr: req.budget_inr - cheapest.total,
+    balance_inr: req.budget_inr - options[0].pkg.total,
+    options: options.map(({ labels, pkg }) => ({
+      labels,
+      cities: pkg.cities,
+      trip: pkg.trip,
+      total_inr: pkg.total,
+      budget_inr: req.budget_inr,
+      balance_inr: req.budget_inr - pkg.total,
+      meta: { travelMinutes: pkg.travelMinutes, avgStars: pkg.avgStars, labels, cities: pkg.cities },
+    })),
   };
 }
 

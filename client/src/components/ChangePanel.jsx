@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { clock, delta, hm, inr } from './format.js';
 
-const TABS = ['Hotels', 'Flights', 'Attractions'];
-const btn = 'rounded-lg border border-blue-700 px-4 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-40';
+const TABS = ['Cities', 'Hotels', 'Flights', 'Attractions'];
+const btn = 'rounded-lg border border-blue-700 px-4 py-1.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 active:scale-95 disabled:opacity-40';
 
 function Row({ title, sub, d, current, busy, action, label = 'Choose' }) {
   return (
@@ -24,26 +24,46 @@ function Row({ title, sub, d, current, busy, action, label = 'Choose' }) {
 
 // Lists what the traveler can choose, each with its real price difference (G2).
 // Choosing something calls onChange(change, label); the backend re-checks the whole package.
-export default function ChangePanel({ tripId, version, onChange, busy }) {
-  const [tab, setTab] = useState('Hotels');
+export default function ChangePanel({ tripId, version, onChange, busy, startTab = 'Cities' }) {
+  const [tab, setTab] = useState(startTab);
   const [options, setOptions] = useState(null);
   const [slot, setSlot] = useState({}); // attraction_id -> chosen date
 
   useEffect(() => {
     setOptions(null);
-    api.options(tripId).then(setOptions).catch(() => setOptions({ hotels: {}, flights: { arrival: [], return: [] }, attractions: [] }));
+    api.options(tripId).then(setOptions).catch(() => setOptions({ cities: [], hotels: {}, flights: { arrival: [], return: [] }, attractions: [] }));
   }, [tripId, version]); // reload after every accepted change
 
-  if (!options) return <p className="rounded-xl bg-white p-6 text-slate-500 shadow-xl">Loading choices…</p>;
+  if (!options)
+    return (
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-6" aria-busy="true">
+        <div className="h-8 w-64 animate-pulse rounded bg-slate-100" />
+        {[0, 1, 2].map((i) => <div key={i} className="h-12 animate-pulse rounded bg-slate-100" />)}
+      </div>
+    );
 
   return (
-    <div className="rounded-xl bg-white p-6 shadow-xl">
-      <div className="mb-4 flex gap-2">
+    <div className="rounded-xl border border-slate-200 bg-white p-6">
+      <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === t ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{t}</button>
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition active:scale-95 ${tab === t ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{t}</button>
         ))}
       </div>
+
+      <div key={tab} className="animate-fade-in">
+      {tab === 'Cities' && (
+        <div>
+          <p className="mb-2 text-sm text-slate-500">Another city plan rebuilds the package: hotels, transfers and attractions are chosen again for the new route.</p>
+          <ul>
+            {options.cities.map((c) => (
+              <Row key={c.label} busy={busy} current={c.current} d={c.delta_inr} title={c.label}
+                sub={`Total ${inr(c.total_inr)}`}
+                action={() => onChange({ type: 'SET_CITIES', plan: c.plan }, `Cities changed to ${c.label}`)} />
+            ))}
+          </ul>
+        </div>
+      )}
 
       {tab === 'Hotels' && Object.entries(options.hotels).map(([city, list]) => (
         <div key={city} className="mb-4">
@@ -87,7 +107,7 @@ export default function ChangePanel({ tripId, version, onChange, busy }) {
                   <p className="text-sm text-slate-500">{a.city} · {a.category.toLowerCase()} · {hm(a.visit_minutes)}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-semibold text-red-600">{delta(a.delta_inr)}</span>
+                  <span className={`text-sm font-semibold ${a.delta_inr > 0 ? 'text-red-600' : 'text-slate-500'}`}>{delta(a.delta_inr)}</span>
                   <select value={chosen} onChange={(e) => setSlot({ ...slot, [a.attraction_id]: e.target.value })}
                     className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500">
                     {a.slots.map((x) => <option key={x.date} value={x.date}>{x.date}</option>)}
@@ -100,6 +120,7 @@ export default function ChangePanel({ tripId, version, onChange, busy }) {
           })}
         </ul>
       )}
+      </div>
     </div>
   );
 }

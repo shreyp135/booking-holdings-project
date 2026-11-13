@@ -1,3 +1,4 @@
+// All backend calls go through here so components never build URLs themselves.
 async function request(path, options) {
   const res = await fetch(`/api${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -23,6 +24,8 @@ export const api = {
   options: (id) => request(`/packages/${id}/options`),
   change: (id, change) => post(`/packages/${id}/changes`, change),
   confirm: (id) => post(`/packages/${id}/confirm`),
+  builderPlans: (request) => post('/builder/plans', request),
+  builderCreate: (request, plan) => post('/builder/create', { ...request, plan }),
   reservation: (ref) => request(`/reservations/${ref}`),
   exportUrl: (id) => `/api/packages/${id}/export`,
 };

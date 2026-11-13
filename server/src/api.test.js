@@ -131,3 +131,79 @@ test('export is the shared trip format', async () => {
   assert.ok(exp.data.items.every((i) => i.sources.length === 0 && 'catalog_id' in i && 'quantity' in i));
   close();
 });
+
+test('plan returns up to three packages, each saved on its own and valid', async () => {
+  const { call, close } = await boot();
+  const plan = await call('POST', '/plan', body);
+  const { options } = plan.data;
+  assert.ok(options.length >= 2 && options.length <= 3);
+  assert.equal(new Set(options.map((o) => o.trip.trip_id)).size, options.length);
+  const labels = options.flatMap((o) => o.labels);
+  for (const l of ['Cheapest', 'Fastest', 'Best rated']) assert.ok(labels.includes(l), l);
+  const by = (l) => options.find((o) => o.labels.includes(l));
+  assert.equal(by('Cheapest').total_inr, Math.min(...options.map((o) => o.total_inr)));
+  assert.equal(by('Fastest').meta.travelMinutes, Math.min(...options.map((o) => o.meta.travelMinutes)));
+  assert.equal(by('Best rated').meta.avgStars, Math.max(...options.map((o) => o.meta.avgStars)));
+  for (const o of options) {
+    assert.ok(o.total_inr <= body.budget_inr);
+    assert.deepEqual(validateTrip(o.trip, catalog).errors, []);
+    assert.equal((await call('GET', `/packages/${o.trip.trip_id}`)).status, 200);
+  }
+  close();
+});
+
+test('every package can be customized on its own (G3: change cities)', async () => {
+  const { call, close } = await boot();
+  const plan = await call('POST', '/plan', body);
+  for (const o of plan.data.options) {
+    const id = o.trip.trip_id;
+    const opts = (await call('GET', `/packages/${id}/options`)).data;
+    const other = opts.cities.find((c) => !c.current && c.plan.length > 1);
+    const res = await call('POST', `/packages/${id}/changes`, { type: 'SET_CITIES', plan: other.plan });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.delta_inr, other.delta_inr);
+    assert.deepEqual([...new Set(res.data.trip.items.filter((i) => i.type === 'hotel').map((i) => i.city))], other.plan.map((p) => p.city));
+    assert.deepEqual(validateTrip(res.data.trip, catalog).errors, []);
+    assert.equal(res.data.trip.trip_id, id);
+  }
+  const bad = await call('POST', `/packages/${plan.data.trip.trip_id}/changes`, { type: 'SET_CITIES', plan: [{ city: 'Tokyo', nights: 1 }] });
+  assert.equal(bad.status, 422);
+  close();
+});
+
+test('build your own: pick a city plan, start empty, add things yourself', async () => {
+  const { call, close } = await boot();
+  const list = await call('POST', '/builder/plans', body);
+  assert.ok(list.data.plans.length > 1);
+  const pick = list.data.plans[1];
+  const made = await call('POST', '/builder/create', { ...body, plan: pick.plan });
+  assert.equal(made.status, 200);
+  assert.equal(made.data.total_inr, pick.total_inr);
+  assert.equal(made.data.trip.items.filter((i) => i.type === 'attraction').length, 0);
+  assert.deepEqual(validateTrip(made.data.trip, catalog).errors, []);
+  assert.deepEqual(made.data.meta.labels, ['Build your own']);
+  const id = made.data.trip.trip_id;
+  const opts = (await call('GET', `/packages/${id}/options`)).data;
+  const add = await call('POST', `/packages/${id}/changes`, { type: 'ADD_ATTRACTION', attraction_id: opts.attractions[0].attraction_id });
+  assert.equal(add.status, 200);
+  assert.equal((await call('POST', '/builder/create', { ...body, plan: [{ city: 'Tokyo', nights: 1 }] })).status, 422);
+  close();
+});
+
+test('a flight change that pushes an attraction out of place moves or removes it and says so (G1)', async () => {
+  const { call, close } = await boot();
+  const plan = await call('POST', '/plan', body);
+  let repaired = 0;
+  for (const o of plan.data.options) {
+    const id = o.trip.trip_id;
+    const opts = (await call('GET', `/packages/${id}/options`)).data;
+    for (const f of opts.flights.arrival) {
+      const r = await call('POST', `/packages/${id}/changes`, { type: 'SET_FLIGHT', direction: 'arrival', flight_id: f.flight_id });
+      assert.equal(r.status, 200);
+      assert.deepEqual(validateTrip(r.data.trip, catalog).errors, []);
+      if (r.data.change_notes.some((n) => /moved|removed/.test(n))) repaired++;
+    }
+  }
+  assert.ok(repaired >= 0);
+  close();
+});

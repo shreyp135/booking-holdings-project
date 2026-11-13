@@ -4,9 +4,11 @@
 //   3. rebuild the WHOLE package with assembleTrip (transfers, times, prices are re-derived)
 //   4. the validator checks every rule again -> accept, or refuse with the reasons
 import { assembleTrip } from './assemble.js';
+import { enumerateCityPlans } from './cityplans.js';
+import { buildPackagesForPlans } from './planner.js';
 import { minRooms } from './pricing.js';
 import { visitStart } from './schedule.js';
-import { addDays, nightsBetween, splitDateTime, toMin } from './time.js';
+import { addDays, daysBetween, nightsBetween, splitDateTime, toMin } from './time.js';
 
 // ---------- trip <-> selection ----------
 export function selectionFromTrip(trip, catalog) {
@@ -135,11 +137,13 @@ const range = (from, to, step) => { const out = []; for (let x = from; x <= to; 
  *   { type: 'SET_FLIGHT', direction: 'arrival' | 'return', flight_id }
  *   { type: 'ADD_ATTRACTION', attraction_id, date?, start? }
  *   { type: 'REMOVE_ATTRACTION', attraction_id }
+ *   { type: 'SET_CITIES', plan: [{ city, nights }, ...] }
  * @returns { ok: true, trip, delta_inr, notes } or { ok: false, reasons: [...] }
  */
 export function applyChange(trip, change, catalog) {
-  const sel = selectionFromTrip(trip, catalog);
+  let sel = selectionFromTrip(trip, catalog);
   let built = null;
+  const keepNotes = [];
 
   switch (change?.type) {
     case 'SET_HOTEL': {
@@ -180,25 +184,81 @@ export function applyChange(trip, change, catalog) {
       if (sel.visits.length === before) return refuse('That attraction is not in your package');
       break;
     }
+    case 'SET_CITIES': {
+      // G3: another valid city plan. The package is rebuilt from scratch for that plan.
+      const req = { ...sel.request, nights: daysBetween(sel.request.start_date, sel.request.end_date) };
+      const valid = enumerateCityPlans(catalog.countryByName.get(req.country), req.nights, catalog.rules.min_nights_per_city);
+      const key = (p) => p.map((x) => `${x.city}:${x.nights}`).join('|');
+      const wanted = (change.plan ?? []).map((x) => ({ city: x.city, nights: Number(x.nights) }));
+      if (!valid.some((p) => key(p) === key(wanted))) return refuse('That is not a valid city plan for this trip');
+      const [{ result }] = buildPackagesForPlans(req, [wanted], catalog);
+      if (!result.ok) return refuse(result.reason);
+      sel = { ...result.pkg.selection, trip_id: trip.trip_id, name: sel.name };
+      keepNotes.push('Cities changed: hotels, transfers and attractions were chosen again for the new route. Customize them as you like.');
+      break;
+    }
     default:
       return refuse('Unknown change type');
   }
 
-  built = assembleTrip(sel, catalog); // rebuilds everything and runs every rule
-  if (!built.ok) return refuse(...built.errors.map((e) => e.message));
+  built = assembleTrip(sel, catalog, change.type === 'SET_CITIES' ? { firstPackage: true } : {}); // rebuilds everything and runs every rule
+  if (!built.ok) {
+    // G1: if only attractions are in conflict (for example a new flight lands later), move them or drop them and say so
+    const fixed = repairAttractions(sel, built, catalog);
+    if (!fixed) return refuse(...built.errors.map((e) => e.message));
+    built = fixed.built;
+    keepNotes.push(...fixed.notes);
+  }
   return {
     ok: true,
     trip: built.trip,
+    meta: built.meta,
     delta_inr: built.trip.total_inr - trip.total_inr,
-    notes: [...changeNotes(trip, built.trip, catalog), ...tripNotes(built.trip, catalog)],
+    notes: [...keepNotes, ...changeNotes(trip, built.trip, catalog), ...tripNotes(built.trip, catalog)],
   };
 }
+
+// G1: attractions that no longer fit (too early after a new flight, closed, overlapping) are moved to another
+// time or day if one works, and removed if none does. Anything else that fails is not repaired.
+function repairAttractions(sel, built, catalog) {
+  const bad = built.errors;
+  if (!bad.length || !bad.every((e) => e.rule.startsWith('ATTRACTION') && e.item_id)) return null;
+  const ids = new Set(bad.map((e) => e.item_id));
+  const dropped = built.trip.items.filter((i) => ids.has(i.item_id)).map((i) => i.catalog_id);
+  let next = { ...sel, visits: sel.visits.filter((v) => !dropped.includes(v.attraction_id)) };
+  const notes = [];
+  for (const id of dropped) {
+    const att = catalog.attractionById.get(id);
+    const found = findVisit(next, att, catalog);
+    if (found.visit) {
+      next = { ...next, visits: [...next.visits, found.visit] };
+      notes.push(`${att.name} no longer fit its time, so it was moved to ${found.visit.date} at ${clock(found.visit.start)}.`);
+    } else notes.push(`${att.name} no longer fit your schedule and was removed.`);
+  }
+  const rebuilt = assembleTrip(next, catalog);
+  return rebuilt.ok ? { built: rebuilt, notes } : null;
+}
+const clock = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 // ---------- what the traveler can choose, with the REAL price difference of each choice ----------
 export function listOptions(trip, catalog) {
   const sel = selectionFromTrip(trip, catalog);
   const dry = (change) => applyChange(trip, change, catalog); // never saves anything
-  const options = { hotels: {}, flights: { arrival: [], return: [] }, attractions: [] };
+  const options = { cities: [], hotels: {}, flights: { arrival: [], return: [] }, attractions: [] };
+
+  // cities (G3): every valid city plan, with the price difference of switching to it
+  const creq = { ...sel.request, nights: daysBetween(sel.request.start_date, sel.request.end_date) };
+  const plans = enumerateCityPlans(catalog.countryByName.get(trip.country), creq.nights, catalog.rules.min_nights_per_city);
+  const here = sel.stays.map((s) => `${s.city}:${nightsBetween(s.from, s.to).length}`).join('|');
+  for (const { plan, result } of buildPackagesForPlans(creq, plans, catalog)) {
+    if (!result.ok) continue;
+    const key = plan.map((x) => `${x.city}:${x.nights}`).join('|');
+    options.cities.push({
+      plan, label: plan.map((x) => `${x.city} (${x.nights})`).join(' → '),
+      total_inr: result.pkg.total, delta_inr: result.pkg.total - trip.total_inr, current: key === here,
+    });
+  }
+  options.cities.sort((a, b) => a.total_inr - b.total_inr);
 
   // hotels: every hotel in each city of the trip, with its cheapest room that works
   for (const stay of sel.stays) {

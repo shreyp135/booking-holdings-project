@@ -1,1 +1,43 @@
 @import "tailwindcss";
+
+/* Small, calm motion used across the journey. Names are used as Tailwind classes, e.g. animate-fade-up. */
+@theme {
+  --animate-fade-up: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-fade-in: fade-in 0.25s ease-out both;
+  --animate-pop: pop 0.4s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  --animate-toast: toast-in 0.3s ease-out both;
+  --animate-flash: flash 0.9s ease-out both;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateX(24px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes flash {
+    from { background-color: rgb(254 215 170); }
+    to { background-color: transparent; }
+  }
+}
+
+html { scroll-behavior: smooth; }
+
+/* people who ask their system for less motion get none */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

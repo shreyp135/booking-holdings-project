@@ -11,6 +11,7 @@ const PackageSchema = new mongoose.Schema(
     trip: Object,
     status: { type: String, default: 'PLANNED' }, // PLANNED | BOOKED
     reference: { type: String, default: null },    // set after confirm
+    meta: Object,                                  // labels (Cheapest, Fastest...), travel minutes, average stars
   },
   { timestamps: true }
 );

@@ -3,6 +3,7 @@ import { validateRequest } from '../engine/request.js';
 import { planTrip } from '../engine/planner.js';
 import { applyChange, listOptions, tripNotes } from '../engine/editor.js';
 import { confirmPackage, isReference } from '../engine/booking.js';
+import { builderPlans, createSkeleton } from '../engine/builder.js';
 
 export function buildRouter(catalog, store) {
   const r = Router();
@@ -12,6 +13,7 @@ export function buildRouter(catalog, store) {
     trip: pkg.trip,
     status: pkg.status,
     reference: pkg.reference ?? null,
+    meta: pkg.meta ?? null,
     total_inr: pkg.trip.total_inr,
     budget_inr: pkg.trip.budget_inr,
     balance_inr: pkg.trip.budget_inr - pkg.trip.total_inr,
@@ -57,10 +59,33 @@ export function buildRouter(catalog, store) {
     if (!checked.ok) return res.status(400).json({ error: 'Invalid request', fields: checked.errors });
     const result = planTrip(checked.value, catalog);
     if (result.status === 'OK') {
-      await store.savePackage({ trip_id: result.trip.trip_id, request: checked.value, trip: result.trip, status: 'PLANNED', reference: null });
-      result.notes = tripNotes(result.trip, catalog);
+      // every option is saved as its own package, so each one can be customized and confirmed on its own
+      for (const o of result.options) {
+        await store.savePackage({ trip_id: o.trip.trip_id, request: checked.value, trip: o.trip, status: 'PLANNED', reference: null, meta: o.meta });
+        o.notes = tripNotes(o.trip, catalog);
+      }
+      result.notes = result.options[0].notes;
     }
     res.json({ request: checked.value, ...result });
+  }));
+
+  // Build your own itinerary: the city plans the traveler can start from (with the price of the empty skeleton)...
+  r.post('/builder/plans', safe(async (req, res) => {
+    const checked = validateRequest(req.body, catalog);
+    if (!checked.ok) return res.status(400).json({ error: 'Invalid request', fields: checked.errors });
+    const plans = builderPlans(checked.value, catalog).map(({ plan, label, total_inr }) => ({ plan, label, total_inr }));
+    res.json({ request: checked.value, plans });
+  }));
+
+  // ...and creating the empty itinerary for the chosen plan. The traveler then adds hotels, flights and attractions.
+  r.post('/builder/create', safe(async (req, res) => {
+    const checked = validateRequest(req.body, catalog);
+    if (!checked.ok) return res.status(400).json({ error: 'Invalid request', fields: checked.errors });
+    const pkg = createSkeleton(checked.value, req.body.plan, catalog);
+    if (!pkg) return res.status(422).json({ error: 'That city plan is not possible for this request' });
+    const saved = { trip_id: pkg.trip.trip_id, request: checked.value, trip: pkg.trip, status: 'PLANNED', reference: null, meta: { labels: ['Build your own'], travelMinutes: pkg.travelMinutes, avgStars: pkg.avgStars, cities: pkg.cities } };
+    await store.savePackage(saved);
+    res.json(view(saved));
   }));
 
   // Open a saved package again (page refresh).
@@ -90,8 +115,9 @@ export function buildRouter(catalog, store) {
     if (pkg.status === 'BOOKED') return res.status(409).json({ ok: false, reasons: ['This package is already confirmed and cannot be changed.'] });
     const result = applyChange(pkg.trip, req.body, catalog);
     if (!result.ok) return res.status(422).json(result);
-    await store.savePackage({ ...pkg, trip: result.trip });
-    res.json({ ok: true, delta_inr: result.delta_inr, change_notes: result.notes, ...view({ ...pkg, trip: result.trip }) });
+    const next = { ...pkg, trip: result.trip, meta: { ...pkg.meta, travelMinutes: result.meta.travelMinutes, avgStars: result.meta.avgStars } };
+    await store.savePackage(next);
+    res.json({ ok: true, delta_inr: result.delta_inr, change_notes: result.notes, ...view(next) });
   }));
 
   // M7: confirm -> reservation number.
