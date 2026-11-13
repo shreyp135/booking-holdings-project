@@ -32,6 +32,11 @@ export default function App() {
     }
   };
 
+  const handleConfirm = async (trip) => {
+      const res = await api.confirm(trip.trip_id);
+      setResult((r) => ({ ...r, ...res })); // res has reference + status 'BOOKED'
+  };
+
   return (
     <>
       {/* Form stays mounted (hidden) so "Edit trip" keeps what was typed */}
@@ -52,10 +57,9 @@ export default function App() {
       {result && (
         <PackageView
           result={result}
-          onBack={() => {
-            setResult(null);
-            window.scrollTo(0, 0);
-          }}
+          onResultChange={setResult}
+          onConfirm={handleConfirm}
+          onBack={() => { setResult(null); window.scrollTo(0, 0); }}
         />
       )}
     </>

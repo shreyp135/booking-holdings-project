@@ -3,6 +3,9 @@
 //   OK           -> { trip, total_inr, budget_inr, balance_inr, cities }      (M4, M5)
 //   OVER_BUDGET  -> { message, cheapest_trip, over_by_inr, suggestions }       (M8)
 //   NO_PACKAGE   -> { message, reasons }                                       (M2)
+import { useState } from 'react';
+import ChangePanel from './ChangePanel.jsx';
+import { api } from '../api.js';
 
 const inr = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
 const dateOf = (s) => s.slice(0, 10);
@@ -125,7 +128,7 @@ function exportJson(trip) {
   URL.revokeObjectURL(a.href);
 }
 
-function Summary({ trip, over, onBack, onConfirm }) {
+function Summary({ trip, over,busy, onBack, onEdit, editing, onConfirm }) {
   const total = trip.total_inr;
   const left = trip.budget_inr - total;
   const parts = Object.entries(TYPES).map(([type, v]) => ({
@@ -163,7 +166,7 @@ function Summary({ trip, over, onBack, onConfirm }) {
         <button
           type="button"
           onClick={() => onConfirm?.(trip)}
-          disabled={!onConfirm || over}
+          disabled={!onConfirm || over || busy}
           className="w-full rounded-lg bg-orange-500 py-3 font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Confirm booking
@@ -178,17 +181,18 @@ function Summary({ trip, over, onBack, onConfirm }) {
         </button>
         <button
           type="button"
-          onClick={onBack}
-          className="w-full rounded-lg py-2.5 font-semibold text-slate-600 hover:bg-slate-100"
+          onClick={onEdit}
+          disabled={over}
+          className="w-full rounded-lg py-2.5 font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
         >
-          Edit trip
+          {editing ? 'Done editing' : 'Edit trip'}
         </button>
       </div>
     </aside>
   );
 }
 
-function Shell({ onBack, children }) {
+function Shell({ onBack, onEdit, children }) {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <header className="bg-white shadow-sm">
@@ -196,9 +200,7 @@ function Shell({ onBack, children }) {
           <span className="text-2xl font-bold tracking-tight text-blue-700">
             Build My <span className="text-orange-500">Holiday</span>
           </span>
-          <button onClick={onBack} className="ml-auto rounded-md px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
-            Edit trip
-          </button>
+      
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
@@ -206,7 +208,12 @@ function Shell({ onBack, children }) {
   );
 }
 
-export default function PackageView({ result, onBack, onConfirm }) {
+export default function PackageView({ result, onBack, onConfirm, onResultChange }) {
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [error, setError] = useState('');
+
   if (!result) return null;
 
   // M2: nothing can be built
@@ -235,6 +242,32 @@ export default function PackageView({ result, onBack, onConfirm }) {
   const trip = over ? result.cheapest_trip : result.trip;
   const t = trip.traveler;
 
+  const handleChange = async (change) => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.change(trip.trip_id, change);
+      onResultChange({ ...result, ...res }); // new trip, total, notes
+      setVersion((v) => v + 1);              // makes ChangePanel reload its options
+    } catch (e) {
+      setError(e.reasons?.join(' ') || e.message); // the server's reason for refusing (422)
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await onConfirm(trip);
+    } catch (e) {
+      setError(e.message);
+      window.scrollTo(0, 0); // the banner is at the top of the page
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Shell onBack={onBack}>
       {/* M8: budget too small */}
@@ -264,10 +297,23 @@ export default function PackageView({ result, onBack, onConfirm }) {
         </p>
       </div>
 
+      {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {editing && !over && (
+        <div className="mb-6">
+          <ChangePanel tripId={trip.trip_id} version={version} busy={busy} onChange={handleChange} />
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <DayPlan trip={trip} />
-        <Summary trip={trip} over={over} onBack={onBack} onConfirm={onConfirm} />
-      </div>
+        <Summary
+          trip={trip}
+          over={over}
+          busy={busy}
+          onBack={onBack}
+          onConfirm={onConfirm ? handleConfirm : undefined}
+          onEdit={() => setEditing((e) => !e)}
+          editing={editing}
+        /></div>
     </Shell>
   );
 }
