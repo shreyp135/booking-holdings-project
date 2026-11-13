@@ -11,7 +11,7 @@ const KEY = 'bmh_state'; // what the traveler was looking at, so a page refresh 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // a package from POST /plan, shaped like a stored package
-const asView = (o) => ({ trip: o.trip, status: 'PLANNED', reference: null, total_inr: o.total_inr, budget_inr: o.budget_inr, balance_inr: o.balance_inr, notes: o.notes ?? [], meta: o.meta });
+const asView = (o) => ({ trip: o.trip, status: 'PLANNED', reference: null, total_inr: o.total_inr, budget_inr: o.budget_inr, balance_inr: o.balance_inr, notes: o.notes ?? [], meta: o.meta, media: o.media });
 
 export default function App() {
   const [meta, setMeta] = useState({ departureCities: [], countries: [] });

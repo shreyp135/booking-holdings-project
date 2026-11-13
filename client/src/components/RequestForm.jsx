@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { inr } from './format.js';
+import Credits from './Credits.jsx';
 
 // Same limits the backend enforces (server/src/engine/request.js)
 const MIN_NIGHTS = 3;
@@ -26,6 +26,11 @@ export function validateRequest(f) {
 
   const adults = Number(f.adults);
   if (!Number.isInteger(adults) || adults < 1 || adults > 9) e.adults = 'Adults must be a whole number from 1 to 9.';
+
+  if (f.rooms !== '' && f.rooms !== undefined) {
+    const r = Number(f.rooms);
+    if (!Number.isInteger(r) || r < 1 || r > adults) e.rooms = 'Rooms must be between 1 and the number of adults.';
+  }
 
   f.child_ages.forEach((a, i) => {
     const n = Number(a);
@@ -78,8 +83,8 @@ function CountStepper({ label, hint, value, min, max, onChange }) {
 }
 
 // One field for the whole group, like Agoda: adults, children (with their ages) and rooms in a dropdown.
-// Rooms are not asked for: the planner picks the fewest rooms that fit the group.
-function TravelersField({ adults, ages, onAdults, onChildren, onAge, error }) {
+// Rooms: "Automatic" lets the planner pick the fewest rooms that fit; otherwise the traveler sets the number (1 to adults).
+function TravelersField({ adults, ages, rooms, onAdults, onChildren, onAge, onRooms, error }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
 
@@ -108,7 +113,7 @@ function TravelersField({ adults, ages, onAdults, onChildren, onAge, error }) {
           </svg>
           <span>
             {summary}
-            <span className="text-slate-400"> · rooms picked for you</span>
+            <span className="text-slate-400"> · {rooms === '' ? 'rooms: auto' : `${rooms} room${rooms > 1 ? 's' : ''}`}</span>
           </span>
         </span>
         <svg viewBox="0 0 24 24" className={`h-4 w-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
@@ -116,14 +121,22 @@ function TravelersField({ adults, ages, onAdults, onChildren, onAge, error }) {
       {error && <p role="alert" className="text-sm font-medium text-red-600">{error}</p>}
 
       {open && (
-        <div role="dialog" aria-label="Travelers and rooms" className="absolute left-0 right-0 top-full z-30 mt-2 rounded-xl border border-slate-200 bg-white p-4 shadow-2xl animate-pop md:right-auto md:w-96">
-          <div className="flex items-center justify-between gap-4 py-3">
+        <div role="dialog" aria-label="Travelers and rooms" className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[75vh] overflow-y-auto rounded-xl md:bottom-full md:top-auto md:mb-2 md:mt-0 border border-slate-200 bg-white p-4 shadow-2xl animate-pop md:right-auto md:w-96">
+          <div className="flex items-center justify-between gap-4 pb-3">
             <div>
               <p className="font-semibold">Rooms</p>
-              <p className="text-xs text-slate-500">We choose the fewest rooms that fit your group.</p>
+              <p className="text-xs text-slate-500">{rooms === '' ? 'We choose the fewest rooms that fit your group.' : 'Each room is checked against its capacity.'}</p>
             </div>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">Automatic</span>
+            <div className="flex overflow-hidden rounded-full border border-slate-300 text-sm font-semibold">
+              <button type="button" onClick={() => onRooms('')} className={`whitespace-nowrap px-3 py-1.5 transition ${rooms === '' ? 'bg-blue-700 text-white' : 'text-slate-600 hover:bg-blue-50'}`}>Auto</button>
+              <button type="button" onClick={() => onRooms(rooms === '' ? 1 : rooms)} className={`whitespace-nowrap px-3 py-1.5 transition ${rooms !== '' ? 'bg-blue-700 text-white' : 'text-slate-600 hover:bg-blue-50'}`}>I choose</button>
+            </div>
           </div>
+          {rooms !== '' && (
+            <div className="rounded-lg bg-blue-50/60 px-3 animate-fade-in">
+              <CountStepper label="Number of rooms" hint={`1 to ${adults} (at least one adult per room)`} value={rooms} min={1} max={adults} onChange={onRooms} />
+            </div>
+          )}
           <div className="divide-y divide-slate-100 border-t border-slate-100">
             <CountStepper label="Adults" hint="Age 18 and over" value={adults} min={1} max={MAX_ADULTS} onChange={onAdults} />
             <CountStepper label="Children" hint="Age 0 to 17" value={kids} min={0} max={MAX_CHILDREN} onChange={onChildren} />
@@ -166,6 +179,7 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
     start_date: '',
     nights: 6,
     adults: 2,
+    rooms: '',
     child_ages: [],
     budget_inr: '',
   });
@@ -213,7 +227,11 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
-  const setAdults = (n) => setForm({ ...form, adults: Math.max(1, Math.min(MAX_ADULTS, n)) });
+  const setAdults = (n) => {
+    const adults = Math.max(1, Math.min(MAX_ADULTS, n));
+    setForm({ ...form, adults, rooms: form.rooms === '' ? '' : Math.min(form.rooms, adults) });
+  };
+  const setRooms = (r) => setForm({ ...form, rooms: r === '' ? '' : Math.max(1, Math.min(form.adults, Number(r))) });
 
   const setChildCount = (count) => {
     const n = Math.max(0, Math.min(MAX_CHILDREN, Number(count) || 0));
@@ -241,54 +259,47 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
       adults: Number(form.adults),
       child_ages: form.child_ages.map(Number),
       budget_inr: Number(form.budget_inr),
+      ...(form.rooms === '' ? {} : { rooms: Number(form.rooms) }),
     });
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
-      <header className="bg-white shadow-sm">
-        <div className="mx-auto flex max-w-6xl items-center px-4 py-3">
-          <a href="/" className="text-2xl font-bold tracking-tight text-blue-700">
-            Build My <span className="text-orange-500">Holiday</span>
-          </a>
-          <button
-            type="button"
-            onClick={() => setLookupOpen(true)}
-            className="ml-auto rounded-md px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
-          >
-            Find my booking
-          </button>
-        </div>
+    <div className="relative flex min-h-screen flex-col text-white">
+      {/* the photo is the whole page background; the gradient keeps text readable */}
+      <img src="/hero.jpg" alt="" aria-hidden="true" className="fixed inset-0 -z-20 h-full w-full object-cover object-center" />
+      <div className="fixed inset-0 -z-10 bg-gradient-to-b from-blue-950/80 via-blue-900/50 to-blue-950/80" />
+
+      <header className="flex items-center px-5 py-3 sm:px-8">
+        <a href="/" className="text-2xl font-bold tracking-tight text-white drop-shadow">
+          Build My <span className="text-orange-400">Holiday</span>
+        </a>
+        <button
+          type="button"
+          onClick={() => setLookupOpen(true)}
+          className="group ml-auto flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-base font-bold text-blue-700 shadow-lg ring-2 ring-white/40 transition hover:-translate-y-0.5 hover:bg-orange-500 hover:text-white hover:ring-orange-300 active:scale-95"
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+          Find my booking
+        </button>
       </header>
 
-      <section className="relative overflow-hidden pb-32 pt-16 text-white">
-        <img
-          src="/hero.jpg"
-          alt="Dubai skyline with the Burj Khalifa"
-          className="absolute inset-0 h-full w-full object-cover object-center"
-        />
-        {/* dark overlay keeps the white text readable on the bright sky */}
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-950/75 via-blue-900/45 to-blue-950/70" />
-        <div className="relative mx-auto max-w-6xl px-4">
-          <h1 className="max-w-2xl text-4xl font-bold leading-tight animate-fade-up md:text-5xl">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center gap-6 px-5 pb-6 sm:px-8">
+        <div>
+          <h1 className="max-w-5xl text-3xl font-bold leading-tight drop-shadow animate-fade-up md:text-4xl">
             Tell us where. We will plan the whole holiday.
           </h1>
-          <p style={{ animationDelay: '120ms' }} className="mt-3 max-w-xl text-blue-100 animate-fade-up">
+          <p style={{ animationDelay: '120ms' }} className="mt-2 max-w-xl text-blue-100 animate-fade-up">
             Flights, hotels, airport transfers and attractions, put together correctly and within your budget.
           </p>
         </div>
-      </section>
 
-      <main className="relative z-10 mx-auto -mt-20 max-w-6xl space-y-12 px-4 pb-20">
-        <form onSubmit={submit} noValidate style={{ animationDelay: "200ms" }} className="relative z-20 rounded-xl bg-white p-6 shadow-xl animate-fade-up">
-          <div className="grid gap-5 md:grid-cols-4">
+        <form onSubmit={submit} noValidate style={{ animationDelay: '200ms' }} className="relative z-20 rounded-xl bg-white p-5 text-slate-800 shadow-2xl animate-fade-up">
+          <div className="grid gap-4 md:grid-cols-4">
             <Field label="Departure city" error={err.departure_airport}>
               <select value={form.departure_airport} onChange={set('departure_airport')} className={inputCls(err.departure_airport)}>
                 <option value="">Select city</option>
                 {departureCities.map((c) => (
-                  <option key={c.airport} value={c.airport}>
-                    {c.city}
-                  </option>
+                  <option key={c.airport} value={c.airport}>{c.city}</option>
                 ))}
               </select>
             </Field>
@@ -297,79 +308,66 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
               <select value={form.country} onChange={set('country')} className={inputCls(err.country)}>
                 <option value="">Select country</option>
                 {countries.map((c) => (
-                  <option key={c.code} value={c.name}>
-                    {c.name}
-                  </option>
+                  <option key={c.code} value={c.name}>{c.name}</option>
                 ))}
               </select>
             </Field>
 
-            <Field label="Holiday start date" error={err.start_date}>
-              <input
-                type="date"
-                value={form.start_date}
-                onChange={set('start_date')}
-                className={inputCls(err.start_date)}
-              />
-              {!err.start_date && <p className="text-xs text-slate-500">Flights and rooms exist for 1 to 20 April 2027.</p>}
+            <Field label="Start date (1 to 20 April 2027)" error={err.start_date}>
+              <input type="date" value={form.start_date} onChange={set('start_date')} className={inputCls(err.start_date)} />
             </Field>
 
             <Field label="Nights (3 to 10)" error={err.nights}>
-              <input
-                type="number"
-                min={MIN_NIGHTS}
-                max={MAX_NIGHTS}
-                value={form.nights}
-                onChange={set('nights')}
-                className={inputCls(err.nights)}
-              />
+              <input type="number" min={MIN_NIGHTS} max={MAX_NIGHTS} value={form.nights} onChange={set('nights')} className={inputCls(err.nights)} />
             </Field>
 
-            <TravelersField adults={Number(form.adults)} ages={form.child_ages} onAdults={setAdults} onChildren={setChildCount} onAge={setAge}
-              error={err.child_ages || err.adults} />
+            <TravelersField adults={Number(form.adults)} ages={form.child_ages} rooms={form.rooms} onAdults={setAdults} onChildren={setChildCount} onAge={setAge} onRooms={setRooms}
+              error={err.child_ages || err.adults || err.rooms} />
 
-            <Field label="Budget for everything (₹)" error={err.budget_inr} className="md:col-span-2">
-              <input
-                type="number"
-                min="1"
-                placeholder="350000"
-                value={form.budget_inr}
-                onChange={set('budget_inr')}
-                className={inputCls(err.budget_inr)}
-              />
-              {Number(form.budget_inr) > 0 && <p className="text-xs font-medium text-slate-500">{inr(Number(form.budget_inr))}</p>}
+            <Field label="Budget for everything (₹)" error={err.budget_inr}>
+              <input type="number" min="1" placeholder="350000" value={form.budget_inr} onChange={set('budget_inr')} className={inputCls(err.budget_inr)} />
             </Field>
+
+            <div className="flex items-end">
+              <button type="submit" disabled={loading}
+                className="w-full rounded-lg bg-orange-500 px-4 py-2.5 text-base font-bold text-white transition hover:bg-orange-600 active:scale-95 disabled:opacity-60">
+                {loading ? 'Building…' : 'Build my holiday'}
+              </button>
+            </div>
           </div>
 
           {serverError && (
-            <p role="alert" className="mt-5 rounded-lg bg-red-50 p-3 text-sm font-medium text-red-700">
-              {serverError}
-            </p>
+            <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm font-medium text-red-700">{serverError}</p>
           )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-6 w-full rounded-lg bg-orange-500 px-8 py-3 text-lg font-bold text-white transition hover:bg-orange-600 active:scale-95 disabled:opacity-60 md:w-auto"
-          >
-            {loading ? 'Building your package…' : 'Build my holiday'}
-          </button>
         </form>
 
-        <section>
-          <h2 className="mb-5 text-2xl font-bold">How it works</h2>
-          <ol className="grid gap-4 md:grid-cols-4">
+        <section aria-label="How it works">
+          <h2 className="mb-3 text-lg font-bold drop-shadow">How it works</h2>
+          <ol className="flex flex-col items-stretch gap-2 md:flex-row md:items-center">
             {STEPS.map((s, i) => (
-              <li key={s.title} style={{ animationDelay: `${i * 80}ms` }} className="rounded-xl border border-slate-200 bg-white p-5 transition duration-300 hover:-translate-y-1 hover:shadow-md animate-fade-up">
-                <span className="text-sm font-bold text-orange-500">Step {i + 1}</span>
-                <h3 className="mt-1 font-semibold text-blue-700">{s.title}</h3>
-                <p className="mt-1 text-sm text-slate-600">{s.text}</p>
+              <li key={s.title} className="flex flex-1 flex-col items-center gap-2 md:flex-row">
+                <div style={{ animationDelay: `${i * 80}ms` }}
+                  className="w-full flex-1 rounded-xl border border-white/20 bg-white/15 p-4 backdrop-blur-md transition duration-300 hover:-translate-y-1 hover:bg-white/25 animate-fade-up">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 text-xs font-bold">{i + 1}</span>
+                    <h3 className="font-semibold">{s.title}</h3>
+                  </div>
+                  <p className="mt-1 text-sm text-blue-100">{s.text}</p>
+                </div>
+                {i < STEPS.length - 1 && (
+                  <svg viewBox="0 0 24 24" className="h-6 w-6 shrink-0 rotate-90 text-orange-300 md:rotate-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                )}
               </li>
             ))}
           </ol>
         </section>
-
       </main>
+
+      <footer className="px-5 pb-3 text-xs text-blue-100/80 sm:px-8">
+        <Credits />
+      </footer>
 
       {lookupOpen && (
         <div
@@ -380,7 +378,7 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
             role="dialog"
             aria-modal="true"
             aria-labelledby="lookup-title"
-            className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl animate-pop"
+            className="w-full max-w-md rounded-xl bg-white p-6 text-slate-800 shadow-2xl animate-pop"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between">

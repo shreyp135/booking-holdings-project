@@ -4,9 +4,13 @@ import { planTrip } from '../engine/planner.js';
 import { applyChange, listOptions, tripNotes } from '../engine/editor.js';
 import { confirmPackage, isReference } from '../engine/booking.js';
 import { builderPlans, createSkeleton } from '../engine/builder.js';
+import { mediaFor } from '../engine/media.js';
+import { loadCredits } from '../engine/credits.js';
 
 export function buildRouter(catalog, store) {
   const r = Router();
+  const credits = loadCredits();
+  const prefs = (pkg) => ({ rooms: pkg.request?.rooms ?? null }); // what the traveler asked for besides the trip itself
 
   // what the traveler needs to see about a stored package
   const view = (pkg) => ({
@@ -14,6 +18,7 @@ export function buildRouter(catalog, store) {
     status: pkg.status,
     reference: pkg.reference ?? null,
     meta: pkg.meta ?? null,
+    media: mediaFor(pkg.trip, catalog),
     total_inr: pkg.trip.total_inr,
     budget_inr: pkg.trip.budget_inr,
     balance_inr: pkg.trip.budget_inr - pkg.trip.total_inr,
@@ -35,6 +40,9 @@ export function buildRouter(catalog, store) {
   };
 
   r.get('/health', (_req, res) => res.json({ ok: true }));
+
+  // Photo credits (licence terms of the images, shown in the app)
+  r.get('/credits', (_req, res) => res.json({ credits }));
 
   // Everything the request form (M1) needs.
   r.get('/destinations', (_req, res) => {
@@ -63,6 +71,7 @@ export function buildRouter(catalog, store) {
       for (const o of result.options) {
         await store.savePackage({ trip_id: o.trip.trip_id, request: checked.value, trip: o.trip, status: 'PLANNED', reference: null, meta: o.meta });
         o.notes = tripNotes(o.trip, catalog);
+        o.media = mediaFor(o.trip, catalog);
       }
       result.notes = result.options[0].notes;
     }
@@ -105,7 +114,7 @@ export function buildRouter(catalog, store) {
   // What can be changed, with the real price difference of each choice.
   r.get('/packages/:id/options', safe(async (req, res) => {
     const pkg = await load(req, res);
-    if (pkg) res.json(listOptions(pkg.trip, catalog));
+    if (pkg) res.json(listOptions(pkg.trip, catalog, prefs(pkg)));
   }));
 
   // M6: change the package. Accepted -> saved and returned. Refused -> 422 with the reasons, nothing changes.
@@ -113,7 +122,7 @@ export function buildRouter(catalog, store) {
     const pkg = await load(req, res);
     if (!pkg) return;
     if (pkg.status === 'BOOKED') return res.status(409).json({ ok: false, reasons: ['This package is already confirmed and cannot be changed.'] });
-    const result = applyChange(pkg.trip, req.body, catalog);
+    const result = applyChange(pkg.trip, req.body, catalog, prefs(pkg));
     if (!result.ok) return res.status(422).json(result);
     const next = { ...pkg, trip: result.trip, meta: { ...pkg.meta, travelMinutes: result.meta.travelMinutes, avgStars: result.meta.avgStars } };
     await store.savePackage(next);

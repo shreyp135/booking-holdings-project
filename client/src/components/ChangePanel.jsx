@@ -1,16 +1,23 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { clock, delta, hm, inr } from './format.js';
+import { clock, delta, hm, inr, photo } from './format.js';
 
 const TABS = ['Cities', 'Hotels', 'Flights', 'Attractions'];
 const btn = 'rounded-lg border border-blue-700 px-4 py-1.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 active:scale-95 disabled:opacity-40';
 
-function Row({ title, sub, d, current, busy, action, label = 'Choose' }) {
+function Thumb({ src }) {
+  return src ? <img src={photo(src)} alt="" loading="lazy" className="h-14 w-20 shrink-0 rounded-lg object-cover" /> : null;
+}
+
+function Row({ title, sub, d, current, busy, action, image, label = 'Choose' }) {
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-3 last:border-0">
-      <div className="min-w-0">
-        <p className="font-medium text-slate-800">{title}</p>
-        <p className="text-sm text-slate-500">{sub}</p>
+      <div className="flex min-w-0 items-center gap-3">
+        <Thumb src={image} />
+        <div className="min-w-0">
+          <p className="font-medium text-slate-800">{title}</p>
+          <p className="text-sm text-slate-500">{sub}</p>
+        </div>
       </div>
       <div className="flex items-center gap-3">
         <span className={`text-sm font-semibold ${d > 0 ? 'text-red-600' : d < 0 ? 'text-green-700' : 'text-slate-500'}`}>{delta(d)}</span>
@@ -70,7 +77,7 @@ export default function ChangePanel({ tripId, version, onChange, busy, startTab 
           <h4 className="font-bold text-blue-700">{city}</h4>
           <ul>
             {list.map((h) => (
-              <Row key={h.hotel_id} busy={busy} current={h.current} d={h.delta_inr}
+              <Row key={h.hotel_id} busy={busy} current={h.current} d={h.delta_inr} image={h.image}
                 title={`${h.name}  ${'★'.repeat(h.stars)}`}
                 sub={`${h.area} · ${h.room_name} · guest rating ${h.rating}`}
                 action={() => onChange({ type: 'SET_HOTEL', city, hotel_id: h.hotel_id }, `Hotel in ${city} changed to ${h.name}`)} />
@@ -102,9 +109,12 @@ export default function ChangePanel({ tripId, version, onChange, busy, startTab 
             const s = a.slots.find((x) => x.date === chosen) ?? a.slots[0];
             return (
               <li key={a.attraction_id} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-3 last:border-0">
-                <div>
-                  <p className="font-medium text-slate-800">{a.name}</p>
-                  <p className="text-sm text-slate-500">{a.city} · {a.category.toLowerCase()} · {hm(a.visit_minutes)}</p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Thumb src={a.image} />
+                  <div>
+                    <p className="font-medium text-slate-800">{a.name}</p>
+                    <p className="text-sm text-slate-500">{a.city} · {a.category.toLowerCase()} · {hm(a.visit_minutes)}</p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={`text-sm font-semibold ${a.delta_inr > 0 ? 'text-red-600' : 'text-slate-500'}`}>{delta(a.delta_inr)}</span>

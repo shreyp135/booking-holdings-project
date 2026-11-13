@@ -6,7 +6,7 @@ import AnimatedNumber from './AnimatedNumber.jsx';
 import ChangePanel from './ChangePanel.jsx';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import Toast from './Toast.jsx';
-import { delta, inr } from './format.js';
+import { delta, inr, photo } from './format.js';
 
 const dateOf = (s) => s.slice(0, 10);
 const timeOf = (s) => (s.length > 10 ? s.slice(11, 16) : '');
@@ -55,7 +55,7 @@ function cityOn(trip, date) {
 
 const routeOf = (trip) => hotelsOf(trip).map((h) => `${h.city} (${diffDays(h.start, h.end)})`).join(' → ');
 
-function Row({ entry, onRemove, busy }) {
+function Row({ entry, onRemove, busy, media }) {
   const { kind, it } = entry;
   const t = TYPES[kind === 'checkin' || kind === 'checkout' ? 'hotel' : kind];
   const nights = it.type === 'hotel' ? diffDays(it.start, it.end) : 0;
@@ -85,6 +85,9 @@ function Row({ entry, onRemove, busy }) {
   return (
     <li className="flex items-start gap-3 py-3">
       <span className="w-12 shrink-0 pt-0.5 text-sm font-semibold tabular-nums text-slate-500">{time || '–'}</span>
+      {media?.photos?.[it.catalog_id] && (kind === 'attraction' || kind === 'checkin') ? (
+        <img src={photo(media.photos[it.catalog_id])} alt="" loading="lazy" className="h-14 w-20 shrink-0 rounded-lg object-cover" />
+      ) : null}
       <span className={`mt-0.5 shrink-0 rounded px-2 py-0.5 text-xs font-semibold ${t.cls}`}>{t.label}</span>
       <div className="min-w-0 flex-1">
         <p className="font-medium leading-snug">{title}</p>
@@ -99,7 +102,7 @@ function Row({ entry, onRemove, busy }) {
   );
 }
 
-function DayPlan({ trip, onRemove, busy }) {
+function DayPlan({ trip, onRemove, busy, media }) {
   const days = buildDays(trip);
   return (
     <div className="space-y-4">
@@ -118,7 +121,7 @@ function DayPlan({ trip, onRemove, busy }) {
             ) : (
               <ul className="divide-y divide-slate-100 px-4">
                 {entries.map((e, i) => (
-                  <Row key={`${e.it.item_id}-${e.kind}-${i}`} entry={e} onRemove={onRemove} busy={busy} />
+                  <Row key={`${e.it.item_id}-${e.kind}-${i}`} entry={e} onRemove={onRemove} busy={busy} media={media} />
                 ))}
               </ul>
             )}
@@ -217,7 +220,7 @@ const LABEL_CLS = {
   'Another option': 'bg-slate-100 text-slate-700',
 };
 
-function Title({ trip, labels = [] }) {
+function Title({ trip, labels = [], media }) {
   const t = trip.traveler;
   return (
     <div className="animate-fade-up">
@@ -229,6 +232,13 @@ function Title({ trip, labels = [] }) {
         {fmtDay(trip.start_date)} to {fmtDay(trip.end_date)}, {trip.country}. {t.adults} adult{t.adults > 1 ? 's' : ''}
         {t.children > 0 && `, ${t.children} child${t.children > 1 ? 'ren' : ''} (age ${t.child_ages.join(', ')})`}.
       </p>
+      {media?.gallery?.length > 0 && (
+        <div className="mt-4 flex gap-3 overflow-x-auto pb-1">
+          {media.gallery.slice(0, 7).map((g) => (
+            <img key={g} src={photo(g)} alt="" loading="lazy" className="h-28 w-44 shrink-0 rounded-xl object-cover shadow-sm transition duration-300 hover:scale-[1.03]" />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -311,32 +321,6 @@ export default function PackageView({ pkg, onUpdate }) {
     }
   }
 
-  const handleChange = async (change) => {
-    setBusy(true);
-    setError('');
-    try {
-      const res = await api.change(trip.trip_id, change);
-      onResultChange({ ...result, ...res }); // new trip, total, notes
-      setVersion((v) => v + 1);              // makes ChangePanel reload its options
-    } catch (e) {
-      setError(e.reasons?.join(' ') || e.message); // the server's reason for refusing (422)
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleConfirm = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      await onConfirm(trip);
-    } catch (e) {
-      setError(e.message);
-      window.scrollTo(0, 0); // the banner is at the top of the page
-    } finally {
-      setBusy(false);
-    }
-  };
   return (
     <div className="space-y-6">
       {booked && (
@@ -351,7 +335,7 @@ export default function PackageView({ pkg, onUpdate }) {
         </div>
       )}
 
-      <Title trip={trip} labels={pkg.meta?.labels} />
+      <Title trip={trip} labels={pkg.meta?.labels} media={pkg.media} />
 
       {pkg.notes?.length > 0 && (
         <ul className="list-disc space-y-1 rounded-lg bg-amber-50 p-3 pl-8 text-sm text-amber-900 animate-fade-up">
@@ -359,16 +343,10 @@ export default function PackageView({ pkg, onUpdate }) {
         </ul>
       )}
 
-      {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-      {editing && !over && (
-        <div className="mb-6">
-          <ChangePanel tripId={trip.trip_id} version={version} busy={busy} onChange={handleChange} />
-        </div>
-      )}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
           {!booked && <Customize pkg={pkg} open={open} onToggle={() => setOpen((o) => !o)} onChange={change} busy={busy} version={version} />}
-          <DayPlan trip={trip} busy={busy} onRemove={booked ? undefined : (it) => change({ type: 'REMOVE_ATTRACTION', attraction_id: it.catalog_id }, `${it.name} removed`)} />
+          <DayPlan trip={trip} busy={busy} media={pkg.media} onRemove={booked ? undefined : (it) => change({ type: 'REMOVE_ATTRACTION', attraction_id: it.catalog_id }, `${it.name} removed`)} />
         </div>
         <Summary trip={trip} over={over} busy={busy} booked={booked} onConfirm={() => setAsking(true)} />
       </div>

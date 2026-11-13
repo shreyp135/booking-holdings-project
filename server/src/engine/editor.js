@@ -6,12 +6,12 @@
 import { assembleTrip } from './assemble.js';
 import { enumerateCityPlans } from './cityplans.js';
 import { buildPackagesForPlans } from './planner.js';
-import { minRooms } from './pricing.js';
+import { roomsFor } from './pricing.js';
 import { visitStart } from './schedule.js';
 import { addDays, daysBetween, nightsBetween, splitDateTime, toMin } from './time.js';
 
 // ---------- trip <-> selection ----------
-export function selectionFromTrip(trip, catalog) {
+export function selectionFromTrip(trip, catalog, prefs = {}) {
   const home = trip.traveler.home_airport;
   const items = (t) => trip.items.filter((i) => i.type === t);
   const sel = {
@@ -27,6 +27,7 @@ export function selectionFromTrip(trip, catalog) {
       children: trip.traveler.children,
       child_ages: trip.traveler.child_ages,
       budget_inr: trip.budget_inr,
+      rooms: prefs.rooms ?? null, // the number of rooms the traveler asked for, if any
     },
     arrival_flight_id: null,
     return_flight_id: null,
@@ -98,8 +99,8 @@ function pickRoom(hotel, stay, sel, catalog, roomId) {
   if (roomId && rooms.length === 0) return { reason: 'That room type does not belong to this hotel' };
   let best = null;
   for (const room of rooms) {
-    const k = minRooms(room, adults, children);
-    if (!k) { lastReason = `${room.name} cannot fit ${adults} adults + ${children} children`; continue; }
+    const k = roomsFor(room, adults, children, sel.request.rooms);
+    if (!k) { lastReason = `${room.name} cannot fit ${adults} adults + ${children} children${sel.request.rooms ? ` in ${sel.request.rooms} room(s)` : ''}`; continue; }
     const avail = catalog.availability.get(room.room_id);
     const short = nights.find((n) => (avail?.get(n) ?? 0) < k);
     if (short) { lastReason = `${hotel.name} ${room.name}: only ${avail?.get(short) ?? 0} room(s) left on ${short}, need ${k}`; continue; }
@@ -140,8 +141,8 @@ const range = (from, to, step) => { const out = []; for (let x = from; x <= to; 
  *   { type: 'SET_CITIES', plan: [{ city, nights }, ...] }
  * @returns { ok: true, trip, delta_inr, notes } or { ok: false, reasons: [...] }
  */
-export function applyChange(trip, change, catalog) {
-  let sel = selectionFromTrip(trip, catalog);
+export function applyChange(trip, change, catalog, prefs = {}) {
+  let sel = selectionFromTrip(trip, catalog, prefs);
   let built = null;
   const keepNotes = [];
 
@@ -241,9 +242,9 @@ function repairAttractions(sel, built, catalog) {
 const clock = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 // ---------- what the traveler can choose, with the REAL price difference of each choice ----------
-export function listOptions(trip, catalog) {
-  const sel = selectionFromTrip(trip, catalog);
-  const dry = (change) => applyChange(trip, change, catalog); // never saves anything
+export function listOptions(trip, catalog, prefs = {}) {
+  const sel = selectionFromTrip(trip, catalog, prefs);
+  const dry = (change) => applyChange(trip, change, catalog, prefs); // never saves anything
   const options = { cities: [], hotels: {}, flights: { arrival: [], return: [] }, attractions: [] };
 
   // cities (G3): every valid city plan, with the price difference of switching to it
@@ -268,7 +269,7 @@ export function listOptions(trip, catalog) {
       if (!r.ok) continue;
       const room = catalog.roomById.get(r.trip.items.find((i) => i.type === 'hotel' && i.city === stay.city).room_id);
       list.push({
-        hotel_id: hotel.hotel_id, name: hotel.name, stars: hotel.stars, rating: hotel.rating, area: hotel.area,
+        hotel_id: hotel.hotel_id, name: hotel.name, stars: hotel.stars, rating: hotel.rating, area: hotel.area, image: hotel.image ?? null,
         room_id: room.room_id, room_name: room.name,
         delta_inr: r.delta_inr, current: hotel.hotel_id === stay.hotel_id,
       });
@@ -316,7 +317,7 @@ export function listOptions(trip, catalog) {
     if (slots.length === 0) continue;
     const first = dry({ type: 'ADD_ATTRACTION', attraction_id: att.attraction_id, date: slots[0].date, start: slots[0].start });
     options.attractions.push({
-      attraction_id: att.attraction_id, name: att.name, city: att.city, category: att.category,
+      attraction_id: att.attraction_id, name: att.name, city: att.city, category: att.category, image: att.image ?? null,
       visit_minutes: att.visit_minutes, delta_inr: first.ok ? first.delta_inr : 0, slots,
     });
   }

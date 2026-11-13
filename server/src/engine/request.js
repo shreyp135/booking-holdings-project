@@ -37,6 +37,11 @@ export function validateRequest(body, catalog) {
   if (typeof b.budget_inr !== 'number' || !Number.isFinite(b.budget_inr) || b.budget_inr <= 0)
     errors.budget_inr = 'Budget must be a positive number (INR)';
 
+  // rooms is optional: leave it out and we pick the fewest rooms that fit. If given, 1 room up to one per adult.
+  const hasRooms = b.rooms !== undefined && b.rooms !== null && b.rooms !== '';
+  if (hasRooms && (!Number.isInteger(b.rooms) || b.rooms < 1 || b.rooms > (Number.isInteger(b.adults) ? b.adults : 9)))
+    errors.rooms = 'Rooms must be a whole number from 1 up to the number of adults (one adult per room at least)';
+
   const ok = Object.keys(errors).length === 0;
   if (!ok) return { ok, errors, value: null };
 
@@ -50,6 +55,7 @@ export function validateRequest(body, catalog) {
       start_date: b.start_date,
       nights: b.nights,
       adults: b.adults,
+      rooms: hasRooms ? b.rooms : null,
       child_ages: ages,
       children: ages.length,
       budget_inr: b.budget_inr,

@@ -14,3 +14,17 @@ export function citySummary(trip) {
     .map((h) => `${h.city} (${nightsOf(h.start, h.end)})`)
     .join(' → ');
 }
+
+// "Tokyo → Osaka" (cities only, no night counts)
+export function cityRoute(trip) {
+  return trip.items
+    .filter((i) => i.type === 'hotel')
+    .sort((a, b) => a.start.localeCompare(b.start))
+    .map((h) => h.city)
+    .join(' → ');
+}
+
+export const nightsOfTrip = (trip) => nightsOf(trip.start_date, trip.end_date);
+
+// Photo of a hotel or an attraction. The server serves the data set's images/ folder at /api/images.
+export const photo = (path) => (path ? `/api/${path}` : null);

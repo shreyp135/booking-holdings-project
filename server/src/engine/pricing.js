@@ -37,5 +37,15 @@ export function minRooms(room, adults, children) {
   return null;
 }
 
+// How many rooms of this type to book. `wanted` is the number of rooms the traveler asked for (or null = fewest).
+// Returns null when the group cannot fit in that many rooms of this type.
+export function roomsFor(room, adults, children, wanted) {
+  const min = minRooms(room, adults, children);
+  if (!min) return null;
+  if (!wanted) return min;
+  if (min > wanted) return null;
+  return roomsFit(room, wanted, adults, children) ? wanted : null;
+}
+
 // Judges accept up to 1% difference per price.
 export const priceClose = (a, b) => Math.abs(a - b) <= Math.max(1, 0.01 * Math.max(a, b));

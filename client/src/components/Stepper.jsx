@@ -3,7 +3,7 @@ const STEPS = ['Your trip', 'Choose a package', 'Customize and review', 'Confirm
 // Shows where the traveler is in the journey. `current` is an index into STEPS.
 export default function Stepper({ current }) {
   return (
-    <nav aria-label="Progress" className="mx-auto max-w-6xl px-4 pt-5">
+    <nav aria-label="Progress">
       <ol className="flex items-center gap-2 text-xs font-semibold sm:text-sm">
         {STEPS.map((s, i) => {
           const done = i < current;

@@ -4,7 +4,7 @@ import { enumerateCityPlans } from './cityplans.js';
 import { assignAttractions, visitStart } from './schedule.js';
 import { assembleTrip, bestArrivalTransfer, bestDepartureTransfer } from './assemble.js';
 import { addDays, dayNumber, nightsBetween, weekdayOf } from './time.js';
-import { attractionPrice, flightPrice, hotelPrice, minRooms } from './pricing.js';
+import { attractionPrice, flightPrice, hotelPrice, roomsFor } from './pricing.js';
 
 // ---------------------------------------------------------------------------
 // Build ONE package for ONE city plan. Returns { ok:true, pkg } or { ok:false, reason }.
@@ -36,7 +36,7 @@ function buildForPlan(plan, ctx) {
     const s = stays[i];
     const opts = hotelOptions(ctx, s);
     if (opts.length === 0)
-      return fail(`No ${s.city} hotel has a room type for ${adults} adults + ${children} children free on every night ${s.from} to ${s.to}`);
+      return fail(`No ${s.city} hotel has a room type for ${adults} adults + ${children} children${req.rooms ? ` in ${req.rooms} room${req.rooms > 1 ? 's' : ''}` : ''} free on every night ${s.from} to ${s.to}`);
     const isFirst = i === 0;
     const isLast = i === stays.length - 1;
     let best = null;
@@ -162,7 +162,7 @@ function hotelOptions(ctx, stay) {
   const out = [];
   for (const hotel of catalog.hotelsByCity.get(stay.city) ?? []) {
     for (const room of catalog.roomsByHotel.get(hotel.hotel_id) ?? []) {
-      const k = minRooms(room, adults, children);
+      const k = roomsFor(room, adults, children, ctx.req.rooms);
       if (!k) continue;
       const avail = catalog.availability.get(room.room_id);
       if (!stay.nights.every((n) => (avail?.get(n) ?? 0) >= k)) continue;

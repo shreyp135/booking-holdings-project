@@ -207,3 +207,24 @@ test('a flight change that pushes an attraction out of place moves or removes it
   assert.ok(repaired >= 0);
   close();
 });
+
+test('rooms chosen by the traveler are respected, and too few rooms is refused', async () => {
+  const { call, close } = await boot();
+  const two = await call('POST', '/plan', { ...body, adults: 2, child_ages: [], rooms: 2 });
+  assert.equal(two.data.status, 'OK');
+  for (const it of two.data.trip.items.filter((i) => i.type === 'hotel')) assert.equal(it.quantity, 2);
+  const bad = await call('POST', '/plan', { ...body, adults: 1, rooms: 2 });
+  assert.equal(bad.status, 400);
+  const tooFew = await call('POST', '/plan', { ...body, adults: 4, child_ages: [3, 5, 7, 9, 11], rooms: 1 });
+  assert.notEqual(tooFew.data.status, 'OK');
+  close();
+});
+
+test('plan and package views carry photos, credits are served', async () => {
+  const { call, close } = await boot();
+  const plan = await call('POST', '/plan', body);
+  assert.ok(plan.data.options[0].media.gallery.length > 0);
+  const c = await call('GET', '/credits');
+  assert.ok(c.data.credits.length > 50);
+  close();
+});
