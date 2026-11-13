@@ -311,6 +311,32 @@ export default function PackageView({ pkg, onUpdate }) {
     }
   }
 
+  const handleChange = async (change) => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.change(trip.trip_id, change);
+      onResultChange({ ...result, ...res }); // new trip, total, notes
+      setVersion((v) => v + 1);              // makes ChangePanel reload its options
+    } catch (e) {
+      setError(e.reasons?.join(' ') || e.message); // the server's reason for refusing (422)
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await onConfirm(trip);
+    } catch (e) {
+      setError(e.message);
+      window.scrollTo(0, 0); // the banner is at the top of the page
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="space-y-6">
       {booked && (
@@ -333,6 +359,12 @@ export default function PackageView({ pkg, onUpdate }) {
         </ul>
       )}
 
+      {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {editing && !over && (
+        <div className="mb-6">
+          <ChangePanel tripId={trip.trip_id} version={version} busy={busy} onChange={handleChange} />
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
           {!booked && <Customize pkg={pkg} open={open} onToggle={() => setOpen((o) => !o)} onChange={change} busy={busy} version={version} />}
