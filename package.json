@@ -1,0 +1,10 @@
+{
+  "name": "booking-holdings-project",
+  "private": true,
+  "scripts": {
+    "setup": "npm install && npm install --prefix server && npm install --prefix client",
+    "start": "concurrently -n server,client \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "test": "npm test --prefix server"
+  },
+  "devDependencies": { "concurrently": "^9.0.0" }
+}

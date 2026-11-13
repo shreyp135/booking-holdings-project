@@ -1,0 +1,16 @@
+{
+  "name": "bmh-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^18.0.10",
+    "express": "^4.19.2",
+    "mongoose": "^8.5.0"
+  }
+}
