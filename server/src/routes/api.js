@@ -29,8 +29,9 @@ export function buildRouter(catalog, store) {
   const safe = (fn) => async (req, res) => {
     try { await fn(req, res); }
     catch (e) {
-      console.error('[api]', e.message);
-      res.status(503).json({ error: 'The database is not available right now. Please try again.' });
+      console.error('[api]', req.method, req.path, e.stack || e.message);
+      const db = /mongo|buffering|ECONN|ENOTFOUND|server selection/i.test(`${e.name} ${e.message}`);
+      res.status(db ? 503 : 500).json({ error: db ? 'The database is not available right now. Please try again.' : `Server error: ${e.message}` });
     }
   };
   const load = async (req, res) => {

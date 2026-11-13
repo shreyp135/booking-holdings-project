@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import AnimatedNumber from './AnimatedNumber.jsx';
 import { cityRoute, hm, inr, nightsOfTrip, photo, time } from './format.js';
+import { creditLine, useCredits } from './useCredits.js';
 
 const LABEL_CLS = {
   Cheapest: 'bg-emerald-100 text-emerald-800',
@@ -23,7 +24,7 @@ function pickCovers(options) {
     const g = o.media?.gallery ?? [];
     const pick = g.find((p) => !used.has(p)) ?? g[0] ?? null;
     if (pick) used.add(pick);
-    return photo(pick);
+    return pick;
   });
 }
 
@@ -40,7 +41,7 @@ function OpenArrow({ onClick }) {
   );
 }
 
-function Card({ o, cover, active, onSelect, onOpen, delay }) {
+function Card({ o, cover, credit, active, onSelect, onOpen, delay }) {
   const { trip } = o;
   const labels = o.meta?.labels ?? [];
   const flights = trip.items.filter((i) => i.type === 'flight');
@@ -55,19 +56,22 @@ function Card({ o, cover, active, onSelect, onOpen, delay }) {
       role={active ? undefined : 'button'} tabIndex={active ? undefined : 0}
       aria-label={active ? undefined : `${labels.join(', ')}: ${cityRoute(trip)}. Show this package.`}
       style={{ animationDelay: `${delay}ms` }}
-      className={`relative min-h-0 overflow-hidden rounded-3xl bg-slate-800 shadow-lg animate-fade-up ${active ? '' : 'cursor-pointer hover:shadow-xl'}`}>
+      className={`relative min-h-0 overflow-hidden rounded-3xl bg-slate-800 shadow-lg animate-fade-up transition-all duration-300 ${active ? '' : 'cursor-pointer hover:z-20 hover:-translate-y-2 hover:scale-x-[1.35] hover:scale-y-[1.03] hover:shadow-2xl max-md:hover:scale-x-100 max-md:hover:scale-y-110'}`}>
 
       {/* photo: the left half of the open card, the whole strip of a closed one */}
       {cover
-        ? <img src={cover} alt="" loading="lazy" className={`absolute inset-y-0 left-0 h-full object-cover transition-all duration-700 max-md:w-full ${active ? 'w-1/2 max-md:h-[42%]' : 'w-full hover:scale-105'}`} />
+        ? <img src={photo(cover)} alt="" loading="lazy" className={`absolute inset-y-0 left-0 h-full object-cover transition-all duration-700 max-md:w-full ${active ? 'w-1/2 max-md:h-[42%]' : 'w-full hover:scale-105'}`} />
         : <div className="absolute inset-0 bg-gradient-to-br from-blue-700 to-blue-900" />}
+      {cover && active && credit && (
+        <p className="absolute bottom-2 left-3 max-w-[44%] truncate rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/90 max-md:hidden" title={credit}>{credit}</p>
+      )}
       <div className={`absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/10 transition-opacity duration-500 ${active ? 'opacity-0' : 'opacity-100'}`} />
 
-      {/* closed: vertical label */}
-      <div className={`absolute inset-0 flex items-end justify-between gap-2 p-4 text-white transition-opacity duration-300 max-md:items-center md:flex-col md:items-start md:justify-end ${active ? 'pointer-events-none opacity-0' : 'opacity-100 delay-200'}`}>
+      {/* closed: label, city and price, centered both ways (turned sideways on wide screens) */}
+      <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 p-3 text-center text-white transition-opacity duration-300 max-md:flex-row max-md:gap-4 ${active ? 'pointer-events-none opacity-0' : 'opacity-100 delay-200'}`}>
         <span className="rounded bg-white/90 px-2 py-0.5 text-xs font-bold text-slate-800 md:[writing-mode:vertical-rl] md:rotate-180">{labels[0] ?? 'Package'}</span>
-        <span className="text-sm font-semibold md:[writing-mode:vertical-rl] md:rotate-180">{cityRoute(trip)}</span>
-        <span className="text-sm font-bold tabular-nums md:[writing-mode:vertical-rl] md:rotate-180">{inr(o.total_inr)}</span>
+        <span className="text-2xl font-bold leading-tight drop-shadow md:[writing-mode:vertical-rl] md:rotate-180">{cityRoute(trip)}</span>
+        <span className="text-sm font-semibold tabular-nums drop-shadow md:[writing-mode:vertical-rl] md:rotate-180">{inr(o.total_inr)}</span>
       </div>
 
       {/* open: basic details on the right half */}
@@ -100,6 +104,8 @@ function Card({ o, cover, active, onSelect, onOpen, delay }) {
 export default function OptionsPage({ options, request, onOpen, onBuild }) {
   const [active, setActive] = useState(0);
   const covers = useMemo(() => pickCovers(options), [options]);
+  const credits = useCredits();
+  const ownCover = options[0]?.media?.gallery?.[1] ?? options[0]?.media?.gallery?.[0] ?? null;
   useEffect(() => { if (active >= options.length) setActive(0); }, [options.length, active]);
 
   const kids = request.child_ages?.length ?? 0;
@@ -119,23 +125,29 @@ export default function OptionsPage({ options, request, onOpen, onBuild }) {
         <p className="mt-1 text-slate-600">
           {request.country} · {request.start_date} to {request.end_date} · {people} · budget {inr(request.budget_inr)}
         </p>
-        <p className="mt-1 text-sm text-slate-500">Pick a package, then open it with the arrow to view and customize it.</p>
       </div>
 
       <div className="carousel md:h-[min(30rem,calc(100vh-18rem))] md:min-h-[24rem]" style={{ '--cols': cols, '--rows': rows }} onKeyDown={onKey} role="group" aria-label="Packages">
         {options.map((o, i) => (
-          <Card key={o.trip.trip_id} o={o} cover={covers[i]} active={i === active} delay={i * 90}
+          <Card key={o.trip.trip_id} o={o} cover={covers[i]} credit={creditLine(credits[covers[i]])} active={i === active} delay={i * 90}
             onSelect={() => setActive(i)} onOpen={onOpen} />
         ))}
       </div>
 
-      <article className="flex flex-col items-start justify-between gap-4 rounded-xl border border-dashed border-blue-300 bg-white p-5 transition hover:border-blue-500 hover:shadow-md md:flex-row md:items-center animate-fade-up">
-        <div>
-          <span className="text-sm font-bold text-orange-500">Your way</span>
-          <h2 className="text-xl font-bold text-blue-700">Build your own itinerary</h2>
-          <p className="mt-1 text-sm text-slate-600">Choose the cities yourself, then pick every hotel, flight and attraction. We check each choice against the rules.</p>
+      <article className="group relative overflow-hidden rounded-3xl bg-blue-900 shadow-lg animate-fade-up">
+        {ownCover && <img src={photo(ownCover)} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-50 transition-transform duration-700 group-hover:scale-105" />}
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-950 via-blue-900/80 to-blue-900/20" />
+        <div className="relative flex flex-col items-start justify-between gap-5 p-7 text-white md:flex-row md:items-center">
+          <div className="max-w-xl">
+            <span className="rounded-full bg-orange-500 px-3 py-1 text-xs font-bold uppercase tracking-wide">Your way</span>
+            <h2 className="mt-3 text-2xl font-bold">Build your own trip</h2>
+            <p className="mt-1 text-blue-100">Choose the cities yourself, then pick every hotel, flight and attraction. We check each choice against the rules as you go.</p>
+          </div>
+          <button onClick={onBuild} className="flex shrink-0 items-center gap-2 rounded-full bg-white px-7 py-3 font-bold text-blue-800 shadow-lg transition hover:-translate-y-0.5 hover:bg-orange-500 hover:text-white active:scale-95">
+            Start building
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+          </button>
         </div>
-        <button onClick={onBuild} className="shrink-0 rounded-lg bg-blue-700 px-6 py-3 font-semibold text-white transition hover:bg-blue-800 active:scale-95">Start building</button>
       </article>
     </div>
   );

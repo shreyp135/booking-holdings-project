@@ -3,10 +3,10 @@ import Header from './Header.jsx';
 import Stepper from './Stepper.jsx';
 
 // The frame for every page after the landing page: navbar, then Back (top left) with the progress, then the page.
-export default function Shell({ onBack, backLabel = 'Back', step, children }) {
+export default function Shell({ onBack, backLabel = 'Back', step, onBuild, children }) {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 text-slate-800">
-      <Header />
+      <Header onBuild={onBuild} />
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 pt-4">
         <button type="button" onClick={onBack} aria-label={backLabel}
           className="group flex items-center gap-1 rounded-md py-2 pl-1 pr-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 active:scale-95">

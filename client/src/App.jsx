@@ -143,7 +143,7 @@ export default function App() {
       {loading && <BuildingScreen />}
 
       {view !== 'landing' && (
-        <Shell onBack={back} backLabel={backLabel} step={step}>
+        <Shell onBack={back} backLabel={backLabel} step={step} onBuild={view === 'options' ? () => go('builder') : undefined}>
           <div key={view + (pkg?.trip.trip_id ?? '')} className="animate-fade-in">
             {view === 'options' && <OptionsPage options={options} request={request} onOpen={(o) => open(o, 'options')} onBuild={() => go('builder')} />}
             {view === 'builder' && <BuilderPage request={request} onCreated={(p) => open(p, 'builder')} />}

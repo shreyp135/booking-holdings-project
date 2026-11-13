@@ -7,6 +7,7 @@ import ChangePanel from './ChangePanel.jsx';
 import ConfirmDialog from './ConfirmDialog.jsx';
 import Toast from './Toast.jsx';
 import { delta, inr, photo } from './format.js';
+import { creditLine, useCredits } from './useCredits.js';
 
 const dateOf = (s) => s.slice(0, 10);
 const timeOf = (s) => (s.length > 10 ? s.slice(11, 16) : '');
@@ -53,7 +54,7 @@ function cityOn(trip, date) {
   return stay?.city ?? '';
 }
 
-const routeOf = (trip) => hotelsOf(trip).map((h) => `${h.city} (${diffDays(h.start, h.end)})`).join(' → ');
+const routeOf = (trip) => hotelsOf(trip).map((h) => h.city).join(' → ');
 
 function Row({ entry, onRemove, busy, media }) {
   const { kind, it } = entry;
@@ -220,6 +221,63 @@ const LABEL_CLS = {
   'Another option': 'bg-slate-100 text-slate-700',
 };
 
+// Photo grid: one large picture and up to four smaller ones, with "Show all photos".
+function Gallery({ media }) {
+  const [all, setAll] = useState(false);
+  const credits = useCredits();
+  const g = media?.gallery ?? [];
+  useEffect(() => {
+    if (!all) return;
+    const esc = (e) => e.key === 'Escape' && setAll(false);
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [all]);
+  if (!g.length) return null;
+  const n = g.length >= 5 ? 5 : g.length >= 3 ? 3 : g.length;
+  const cell = (i) => {
+    if (n === 1) return 'col-span-4 row-span-2';
+    if (n === 2) return 'col-span-2 row-span-2';
+    if (n === 3) return i === 0 ? 'col-span-2 row-span-2' : 'col-span-2';
+    return i === 0 ? 'col-span-2 row-span-2' : 'col-span-1';
+  };
+  return (
+    <>
+      <div className="mt-4 grid h-[260px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl sm:h-[340px]">
+        {g.slice(0, n).map((src, i) => (
+          <button key={src} type="button" onClick={() => setAll(true)} title={creditLine(credits[src])} aria-label="Show all photos"
+            className={`relative overflow-hidden bg-slate-200 ${cell(i)}`}>
+            <img src={photo(src)} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 hover:scale-105" />
+            {i === n - 1 && (
+              <span className="absolute bottom-3 right-3 flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 shadow">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true"><path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z" /></svg>
+                Show all photos
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      {all && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in" onClick={() => setAll(false)}>
+          <div role="dialog" aria-modal="true" aria-label="All photos" onClick={(e) => e.stopPropagation()} className="flex max-h-[88vh] w-full max-w-4xl flex-col rounded-2xl bg-white p-5 shadow-2xl animate-pop">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-xl font-bold">All photos</h2>
+              <button type="button" onClick={() => setAll(false)} aria-label="Close" className="rounded-md px-2 py-1 text-2xl leading-none text-slate-500 hover:bg-slate-100">×</button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 overflow-y-auto pr-1 sm:grid-cols-2">
+              {g.map((src) => (
+                <figure key={src}>
+                  <img src={photo(src)} alt="" loading="lazy" className="h-52 w-full rounded-xl object-cover" />
+                  <figcaption className="mt-1 text-xs text-slate-500">{creditLine(credits[src])}</figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function Title({ trip, labels = [], media }) {
   const t = trip.traveler;
   return (
@@ -232,13 +290,7 @@ function Title({ trip, labels = [], media }) {
         {fmtDay(trip.start_date)} to {fmtDay(trip.end_date)}, {trip.country}. {t.adults} adult{t.adults > 1 ? 's' : ''}
         {t.children > 0 && `, ${t.children} child${t.children > 1 ? 'ren' : ''} (age ${t.child_ages.join(', ')})`}.
       </p>
-      {media?.gallery?.length > 0 && (
-        <div className="mt-4 flex gap-3 overflow-x-auto pb-1">
-          {media.gallery.slice(0, 7).map((g) => (
-            <img key={g} src={photo(g)} alt="" loading="lazy" className="h-28 w-44 shrink-0 rounded-xl object-cover shadow-sm transition duration-300 hover:scale-[1.03]" />
-          ))}
-        </div>
-      )}
+      <Gallery media={media} />
     </div>
   );
 }

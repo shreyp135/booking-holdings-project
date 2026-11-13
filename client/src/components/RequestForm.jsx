@@ -27,7 +27,7 @@ export function validateRequest(f) {
   const adults = Number(f.adults);
   if (!Number.isInteger(adults) || adults < 1 || adults > 9) e.adults = 'Adults must be a whole number from 1 to 9.';
 
-  if (f.rooms !== '' && f.rooms !== undefined) {
+  {
     const r = Number(f.rooms);
     if (!Number.isInteger(r) || r < 1 || r > adults) e.rooms = 'Rooms must be between 1 and the number of adults.';
   }
@@ -83,7 +83,7 @@ function CountStepper({ label, hint, value, min, max, onChange }) {
 }
 
 // One field for the whole group, like Agoda: adults, children (with their ages) and rooms in a dropdown.
-// Rooms: "Automatic" lets the planner pick the fewest rooms that fit; otherwise the traveler sets the number (1 to adults).
+// Rooms are chosen by the traveler (1 to the number of adults); the planner checks they can hold the group.
 function TravelersField({ adults, ages, rooms, onAdults, onChildren, onAge, onRooms, error }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
@@ -113,7 +113,7 @@ function TravelersField({ adults, ages, rooms, onAdults, onChildren, onAge, onRo
           </svg>
           <span>
             {summary}
-            <span className="text-slate-400"> · {rooms === '' ? 'rooms: auto' : `${rooms} room${rooms > 1 ? 's' : ''}`}</span>
+            <span className="text-slate-400"> · {rooms} room{rooms > 1 ? 's' : ''}</span>
           </span>
         </span>
         <svg viewBox="0 0 24 24" className={`h-4 w-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
@@ -122,21 +122,7 @@ function TravelersField({ adults, ages, rooms, onAdults, onChildren, onAge, onRo
 
       {open && (
         <div role="dialog" aria-label="Travelers and rooms" className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[75vh] overflow-y-auto rounded-xl md:bottom-full md:top-auto md:mb-2 md:mt-0 border border-slate-200 bg-white p-4 shadow-2xl animate-pop md:right-auto md:w-96">
-          <div className="flex items-center justify-between gap-4 pb-3">
-            <div>
-              <p className="font-semibold">Rooms</p>
-              <p className="text-xs text-slate-500">{rooms === '' ? 'We choose the fewest rooms that fit your group.' : 'Each room is checked against its capacity.'}</p>
-            </div>
-            <div className="flex overflow-hidden rounded-full border border-slate-300 text-sm font-semibold">
-              <button type="button" onClick={() => onRooms('')} className={`whitespace-nowrap px-3 py-1.5 transition ${rooms === '' ? 'bg-blue-700 text-white' : 'text-slate-600 hover:bg-blue-50'}`}>Auto</button>
-              <button type="button" onClick={() => onRooms(rooms === '' ? 1 : rooms)} className={`whitespace-nowrap px-3 py-1.5 transition ${rooms !== '' ? 'bg-blue-700 text-white' : 'text-slate-600 hover:bg-blue-50'}`}>I choose</button>
-            </div>
-          </div>
-          {rooms !== '' && (
-            <div className="rounded-lg bg-blue-50/60 px-3 animate-fade-in">
-              <CountStepper label="Number of rooms" hint={`1 to ${adults} (at least one adult per room)`} value={rooms} min={1} max={adults} onChange={onRooms} />
-            </div>
-          )}
+          <CountStepper label="Rooms" hint={`1 to ${adults} (at least one adult per room)`} value={rooms} min={1} max={adults} onChange={onRooms} />
           <div className="divide-y divide-slate-100 border-t border-slate-100">
             <CountStepper label="Adults" hint="Age 18 and over" value={adults} min={1} max={MAX_ADULTS} onChange={onAdults} />
             <CountStepper label="Children" hint="Age 0 to 17" value={kids} min={0} max={MAX_CHILDREN} onChange={onChildren} />
@@ -179,7 +165,7 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
     start_date: '',
     nights: 6,
     adults: 2,
-    rooms: '',
+    rooms: 1,
     child_ages: [],
     budget_inr: '',
   });
@@ -229,9 +215,9 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
 
   const setAdults = (n) => {
     const adults = Math.max(1, Math.min(MAX_ADULTS, n));
-    setForm({ ...form, adults, rooms: form.rooms === '' ? '' : Math.min(form.rooms, adults) });
+    setForm({ ...form, adults, rooms: Math.min(form.rooms, adults) });
   };
-  const setRooms = (r) => setForm({ ...form, rooms: r === '' ? '' : Math.max(1, Math.min(form.adults, Number(r))) });
+  const setRooms = (r) => setForm({ ...form, rooms: Math.max(1, Math.min(form.adults, Number(r))) });
 
   const setChildCount = (count) => {
     const n = Math.max(0, Math.min(MAX_CHILDREN, Number(count) || 0));
@@ -259,17 +245,17 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
       adults: Number(form.adults),
       child_ages: form.child_ages.map(Number),
       budget_inr: Number(form.budget_inr),
-      ...(form.rooms === '' ? {} : { rooms: Number(form.rooms) }),
+      rooms: Number(form.rooms),
     });
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col text-white">
-      {/* the photo is the whole page background; the gradient keeps text readable */}
-      <img src="/hero.jpg" alt="" aria-hidden="true" className="fixed inset-0 -z-20 h-full w-full object-cover object-center" />
-      <div className="fixed inset-0 -z-10 bg-gradient-to-b from-blue-950/80 via-blue-900/50 to-blue-950/80" />
+    <div className="relative isolate flex min-h-screen flex-col bg-white text-slate-800">
+      {/* the photo fills the top half of the page, the bottom half is white */}
+      <img src="/hero.jpg" alt="" aria-hidden="true" className="fixed inset-x-0 top-0 -z-20 h-1/2 w-full object-cover object-center" />
+      <div className="fixed inset-x-0 top-0 -z-10 h-1/2 bg-gradient-to-b from-blue-950/80 via-blue-900/45 to-blue-950/70" />
 
-      <header className="flex items-center px-5 py-3 sm:px-8">
+      <header className="flex items-center px-5 py-3 text-white sm:px-8">
         <a href="/" className="text-2xl font-bold tracking-tight text-white drop-shadow">
           Build My <span className="text-orange-400">Holiday</span>
         </a>
@@ -284,7 +270,7 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
       </header>
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center gap-6 px-5 pb-6 sm:px-8">
-        <div>
+        <div className="text-white">
           <h1 className="max-w-5xl text-3xl font-bold leading-tight drop-shadow animate-fade-up md:text-4xl">
             Tell us where. We will plan the whole holiday.
           </h1>
@@ -342,20 +328,20 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
         </form>
 
         <section aria-label="How it works">
-          <h2 className="mb-3 text-lg font-bold drop-shadow">How it works</h2>
+          <h2 className="mb-3 text-lg font-bold text-slate-800">How it works</h2>
           <ol className="flex flex-col items-stretch gap-2 md:flex-row md:items-center">
             {STEPS.map((s, i) => (
-              <li key={s.title} className="flex flex-1 flex-col items-center gap-2 md:flex-row">
+              <li key={s.title} className="flex flex-1 flex-col items-center gap-2 md:flex-row md:items-stretch">
                 <div style={{ animationDelay: `${i * 80}ms` }}
-                  className="w-full flex-1 rounded-xl border border-white/20 bg-white/15 p-4 backdrop-blur-md transition duration-300 hover:-translate-y-1 hover:bg-white/25 animate-fade-up">
+                  className="w-full flex-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl animate-fade-up">
                   <div className="flex items-center gap-2">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 text-xs font-bold">{i + 1}</span>
-                    <h3 className="font-semibold">{s.title}</h3>
+                    <h3 className="font-semibold text-blue-700">{s.title}</h3>
                   </div>
-                  <p className="mt-1 text-sm text-blue-100">{s.text}</p>
+                  <p className="mt-1 text-sm text-slate-600">{s.text}</p>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <svg viewBox="0 0 24 24" className="h-6 w-6 shrink-0 rotate-90 text-orange-300 md:rotate-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="h-6 w-6 shrink-0 rotate-90 self-center text-orange-500 md:rotate-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M5 12h14M13 6l6 6-6 6" />
                   </svg>
                 )}
@@ -365,7 +351,7 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
         </section>
       </main>
 
-      <footer className="px-5 pb-3 text-xs text-blue-100/80 sm:px-8">
+      <footer className="px-5 pb-3 text-xs text-slate-400 sm:px-8">
         <Credits />
       </footer>
 
