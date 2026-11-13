@@ -1,4 +1,3 @@
-// Our own persistent state. Catalog data is NOT stored here.
 import mongoose from 'mongoose';
 
 // A built (not yet confirmed) package. Stored so a refresh keeps it.

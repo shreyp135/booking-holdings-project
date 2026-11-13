@@ -21,6 +21,5 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use('/api', buildRouter(catalog));
-
-await connectDb(MONGO_URI);
 app.listen(PORT, () => console.log(`[server] http://localhost:${PORT}`));
+connectDb(MONGO_URI);   // no await: catalog routes work while Mongo connects (or fails)
