@@ -1,17 +1,16 @@
 // The planner builds a complete package for a request. The pieces it picks are chosen so that
 // the validator (validator.js) accepts them; every finished package is checked by it again.
-import { randomUUID } from 'node:crypto';
 import { enumerateCityPlans } from './cityplans.js';
-import { assignAttractions, earliestPickupAfter, intercityDeparture, latestPickupBefore, visitStart } from './schedule.js';
-import { absMin, addDays, dayNumber, fromAbs, makeDateTime, nightsBetween, weekdayOf } from './time.js';
-import { attractionPrice, flightPrice, hotelPrice, minRooms, transferPrice, vehiclesNeeded } from './pricing.js';
-import { validateTrip } from './validator.js';
+import { assignAttractions, visitStart } from './schedule.js';
+import { assembleTrip, bestArrivalTransfer, bestDepartureTransfer } from './assemble.js';
+import { addDays, dayNumber, nightsBetween, weekdayOf } from './time.js';
+import { attractionPrice, flightPrice, hotelPrice, minRooms } from './pricing.js';
 
 // ---------------------------------------------------------------------------
 // Build ONE package for ONE city plan. Returns { ok:true, pkg } or { ok:false, reason }.
 // ---------------------------------------------------------------------------
 function buildForPlan(plan, ctx) {
-  const { catalog, req, travelers, adults, children, country } = ctx;
+  const { catalog, req, travelers, adults, children } = ctx;
   const fail = (reason) => ({ ok: false, reason });
 
   // stays: the city, its dates, and its nights
@@ -54,19 +53,6 @@ function buildForPlan(plan, ctx) {
     chosen.push(best);
   }
 
-  // transfers between cities
-  const hops = [];
-  for (let i = 0; i < stays.length - 1; i++) {
-    const A = stays[i].city;
-    const B = stays[i + 1].city;
-    const day = stays[i].to;
-    const link = country.links.find((l) => l.from_city === A && l.to_city === B);
-    const ts = (link?.transfer_ids ?? []).map((id) => catalog.transferById.get(id)).filter(Boolean);
-    if (ts.length === 0) return fail(`No transfer from ${A} to ${B}`);
-    ts.sort((a, b) => transferPrice(a, adults, children) - transferPrice(b, adults, children) || a.duration_minutes - b.duration_minutes);
-    hops.push({ t: ts[0], pickup: intercityDeparture(day, ts[0]), A, B, day });
-  }
-
   // attractions: one per full day. Every stay's first day is the arrival day or a city-change day.
   const visits = []; // { att, date, start, end }
   for (const s of stays) {
@@ -85,50 +71,22 @@ function buildForPlan(plan, ctx) {
     });
   }
 
-  // ---------- assemble the trip in the shared export format ----------
-  const items = [];
-  const add = (o) => items.push({ item_id: `i${items.length + 1}`, status: 'PLANNED', room_id: null, booking: null, sources: [], warnings: [], ...o });
-  const qty = (t) => (t.pricing === 'PER_VEHICLE' ? vehiclesNeeded(t, travelers) : travelers);
-
-  const { arr } = chosen[0];
-  const { dep } = chosen[chosen.length - 1];
-  const af = arr.flight;
-  const rf = dep.flight;
-  add({ type: 'flight', name: `${af.airline} ${af.flight_number} ${af.from} to ${af.to}`, city: first.city, catalog_id: af.flight_id, start: af.departure_local.slice(0, 16), end: af.arrival_local.slice(0, 16), quantity: travelers, price_inr: flightPrice(af, travelers) });
-  add({ type: 'transfer', name: arr.transfer.name, city: first.city, catalog_id: arr.transfer.transfer_id, start: fromAbs(arr.pickup), end: fromAbs(arr.pickup + arr.transfer.duration_minutes), quantity: qty(arr.transfer), price_inr: transferPrice(arr.transfer, adults, children) });
-  stays.forEach((s, i) => {
-    const { o } = chosen[i];
-    add({ type: 'hotel', name: o.hotel.name, city: s.city, catalog_id: o.hotel.hotel_id, room_id: o.room.room_id, start: s.from, end: s.to, quantity: o.k, price_inr: o.price });
-    if (i < hops.length) {
-      const h = hops[i];
-      add({ type: 'transfer', name: h.t.name, city: h.B, catalog_id: h.t.transfer_id, start: fromAbs(h.pickup), end: fromAbs(h.pickup + h.t.duration_minutes), quantity: qty(h.t), price_inr: transferPrice(h.t, adults, children) });
-    }
-  });
-  for (const v of visits.sort((a, b) => a.date.localeCompare(b.date))) {
-    add({ type: 'attraction', name: v.att.name, city: v.att.city, catalog_id: v.att.attraction_id, start: makeDateTime(v.date, v.start), end: makeDateTime(v.date, v.end), quantity: travelers, price_inr: attractionPrice(v.att, adults, children) });
-  }
-  add({ type: 'transfer', name: dep.transfer.name, city: last.city, catalog_id: dep.transfer.transfer_id, start: fromAbs(dep.pickup), end: fromAbs(dep.pickup + dep.transfer.duration_minutes), quantity: qty(dep.transfer), price_inr: transferPrice(dep.transfer, adults, children) });
-  add({ type: 'flight', name: `${rf.airline} ${rf.flight_number} ${rf.from} to ${rf.to}`, city: req.departure_city, catalog_id: rf.flight_id, start: rf.departure_local.slice(0, 16), end: rf.arrival_local.slice(0, 16), quantity: travelers, price_inr: flightPrice(rf, travelers) });
-
-  const total = items.reduce((s, i) => s + i.price_inr, 0);
-  const trip = {
-    trip_id: `trip-${randomUUID().slice(0, 8)}`,
-    traveler: { name: req.name || 'Traveler', home_airport: req.departure_airport, adults, children, child_ages: req.child_ages },
-    country: req.country,
-    start_date: req.start_date,
-    end_date: req.end_date,
-    budget_inr: req.budget_inr,
-    total_inr: total,
-    items,
+  // ---------- hand the choices to assembleTrip, which builds every derived part and validates ----------
+  const selection = {
+    name: req.name,
+    request: req,
+    arrival_flight_id: chosen[0].arr.flight.flight_id,
+    return_flight_id: chosen[chosen.length - 1].dep.flight.flight_id,
+    stays: stays.map((s, i) => ({ city: s.city, from: s.from, to: s.to, hotel_id: chosen[i].o.hotel.hotel_id, room_id: chosen[i].o.room.room_id, k: chosen[i].o.k })),
+    visits: visits.map((v) => ({ attraction_id: v.att.attraction_id, date: v.date, start: v.start })),
   };
+  const built = assembleTrip(selection, catalog, { firstPackage: true }); // safety gate: never return a package the validator rejects
+  if (!built.ok) return fail(`internal: ${built.errors[0].rule} ${built.errors[0].message}`);
 
-  // safety gate: never return a package the validator rejects
-  const check = validateTrip(trip, catalog, { firstPackage: true });
-  if (!check.valid) return fail(`internal: ${check.errors[0].rule} ${check.errors[0].message}`);
-
-  const travelMinutes = af.duration_minutes + rf.duration_minutes + hops.reduce((s, h) => s + h.t.duration_minutes, 0);
-  const avgStars = stays.reduce((s, st, i) => s + chosen[i].o.hotel.stars * st.nights.length, 0) / (dayNumber(req.end_date) - dayNumber(req.start_date));
-  return { ok: true, pkg: { trip, total, travelMinutes, avgStars, cities: plan.map((p) => `${p.city} (${p.nights})`).join(' → ') } };
+  return {
+    ok: true,
+    pkg: { trip: built.trip, selection, total: built.trip.total_inr, ...built.meta, cities: plan.map((p) => `${p.city} (${p.nights})`).join(' → ') },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -153,30 +111,18 @@ function flightsFor(ctx, city, dir) {
   return out;
 }
 
-const transfersFor = (ctx, airport, city, area) =>
-  (ctx.catalog.airportTransfers.get(`${airport}|${city}`) ?? []).filter((t) => t.area === null || t.area === area);
-
-// cheapest arrival flight + airport transfer for a hotel area
+// cheapest arrival flight + airport transfer for a hotel area (prefers a same-day pickup)
 function arrivalBest(ctx, city, area) {
   const key = `a|${city}|${area}`;
   if (ctx.cache.has(key)) return ctx.cache.get(key);
-  // Prefer a pickup on the arrival day itself. A pickup the next morning is still legal,
-  // so it stays as a fallback when no same-day option exists.
-  const startDay = dayNumber(ctx.req.start_date);
-  let sameDay = null;
-  let anyDay = null;
-  const better = (cand, cur) => !cur || cand.cost < cur.cost || (cand.cost === cur.cost && cand.flight.duration_minutes < cur.flight.duration_minutes);
+  let best = null;
   for (const f of flightsFor(ctx, city, 'arr')) {
-    const landing = absMin(f.arrival_local);
-    for (const t of transfersFor(ctx, f.to, city, area)) {
-      const pickup = earliestPickupAfter(landing + 60, t);
-      if (pickup === null) continue;
-      const cand = { flight: f, transfer: t, pickup, cost: flightPrice(f, ctx.travelers) + transferPrice(t, ctx.adults, ctx.children) };
-      if (better(cand, anyDay)) anyDay = cand;
-      if (Math.floor(pickup / 1440) === startDay && better(cand, sameDay)) sameDay = cand;
-    }
+    const tr = bestArrivalTransfer(ctx.catalog, f, city, area, ctx.adults, ctx.children, ctx.req.start_date);
+    if (!tr) continue;
+    const cand = { flight: f, ...tr, cost: flightPrice(f, ctx.travelers) + tr.cost, sameDay: tr.pickup >= dayStart(ctx.req.start_date) && tr.pickup < dayStart(ctx.req.start_date) + 1440 };
+    const better = !best || (cand.sameDay && !best.sameDay) || (cand.sameDay === best.sameDay && (cand.cost < best.cost || (cand.cost === best.cost && f.duration_minutes < best.flight.duration_minutes)));
+    if (better) best = cand;
   }
-  const best = sameDay ?? anyDay;
   ctx.cache.set(key, best);
   return best;
 }
@@ -186,19 +132,17 @@ function departureBest(ctx, city, area) {
   const key = `d|${city}|${area}`;
   if (ctx.cache.has(key)) return ctx.cache.get(key);
   let best = null;
-  const endDay = dayNumber(ctx.req.end_date);
   for (const f of flightsFor(ctx, city, 'ret')) {
-    const departure = absMin(f.departure_local);
-    for (const t of transfersFor(ctx, f.from, city, area)) {
-      const pickup = latestPickupBefore(departure - 180 - t.duration_minutes, t);
-      if (pickup === null || Math.floor(pickup / 1440) < endDay) continue; // leave the hotel on the last day
-      const cost = flightPrice(f, ctx.travelers) + transferPrice(t, ctx.adults, ctx.children);
-      if (!best || cost < best.cost || (cost === best.cost && f.duration_minutes < best.flight.duration_minutes)) best = { flight: f, transfer: t, pickup, cost };
-    }
+    const tr = bestDepartureTransfer(ctx.catalog, f, city, area, ctx.adults, ctx.children, ctx.req.end_date);
+    if (!tr) continue;
+    const cand = { flight: f, ...tr, cost: flightPrice(f, ctx.travelers) + tr.cost };
+    if (!best || cand.cost < best.cost || (cand.cost === best.cost && f.duration_minutes < best.flight.duration_minutes)) best = cand;
   }
   ctx.cache.set(key, best);
   return best;
 }
+
+const dayStart = (date) => dayNumber(date) * 1440;
 
 // every hotel + room type + room count that fits the group and is free on every night
 function hotelOptions(ctx, stay) {

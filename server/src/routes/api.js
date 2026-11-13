@@ -1,9 +1,36 @@
 import { Router } from 'express';
 import { validateRequest } from '../engine/request.js';
-import { planTrip } from '../engine/planner.js';        // <- new
+import { planTrip } from '../engine/planner.js';
+import { applyChange, listOptions, tripNotes } from '../engine/editor.js';
+import { confirmPackage, isReference } from '../engine/booking.js';
 
-export function buildRouter(catalog) {
+export function buildRouter(catalog, store) {
   const r = Router();
+
+  // what the traveler needs to see about a stored package
+  const view = (pkg) => ({
+    trip: pkg.trip,
+    status: pkg.status,
+    reference: pkg.reference ?? null,
+    total_inr: pkg.trip.total_inr,
+    budget_inr: pkg.trip.budget_inr,
+    balance_inr: pkg.trip.budget_inr - pkg.trip.total_inr,
+    notes: tripNotes(pkg.trip, catalog),
+  });
+
+  // wrap async handlers so a database error becomes a clean 503 instead of a hanging request
+  const safe = (fn) => async (req, res) => {
+    try { await fn(req, res); }
+    catch (e) {
+      console.error('[api]', e.message);
+      res.status(503).json({ error: 'The database is not available right now. Please try again.' });
+    }
+  };
+  const load = async (req, res) => {
+    const pkg = await store.getPackage(req.params.id);
+    if (!pkg) res.status(404).json({ error: 'Package not found' });
+    return pkg;
+  };
 
   r.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -11,29 +38,84 @@ export function buildRouter(catalog) {
   r.get('/destinations', (_req, res) => {
     res.json({
       departureCities: catalog.departureCities,
-      countries: catalog.countries.map((c) => ({
-        code: c.code,
-        name: c.name,
-        cities: c.cities.map((x) => x.name),
-      })),
+      countries: catalog.countries.map((c) => ({ code: c.code, name: c.name, cities: c.cities.map((x) => x.name) })),
       rules: catalog.rules,
     });
   });
 
-  // M1: validate the request form. 200 with the cleaned request, or 400 with a message per field.
+  // M1: validate the request form on its own.
   r.post('/requests/validate', (req, res) => {
     const result = validateRequest(req.body, catalog);
     if (!result.ok) return res.status(400).json({ error: 'Invalid request', fields: result.errors });
     res.json({ ok: true, request: result.value });
   });
 
-  // M2/M8: build a package. Bad input -> 400 with a message per field.
+  // M2/M8: build a package and save it. Bad input -> 400 with a message per field.
   // Otherwise 200 with { status: 'OK' | 'OVER_BUDGET' | 'NO_PACKAGE', message, ... }.
-  r.post('/plan', (req, res) => {
+  r.post('/plan', safe(async (req, res) => {
     const checked = validateRequest(req.body, catalog);
     if (!checked.ok) return res.status(400).json({ error: 'Invalid request', fields: checked.errors });
-    res.json({ request: checked.value, ...planTrip(checked.value, catalog) });
-  });
+    const result = planTrip(checked.value, catalog);
+    if (result.status === 'OK') {
+      await store.savePackage({ trip_id: result.trip.trip_id, request: checked.value, trip: result.trip, status: 'PLANNED', reference: null });
+      result.notes = tripNotes(result.trip, catalog);
+    }
+    res.json({ request: checked.value, ...result });
+  }));
+
+  // Open a saved package again (page refresh).
+  r.get('/packages/:id', safe(async (req, res) => {
+    const pkg = await load(req, res);
+    if (pkg) res.json(view(pkg));
+  }));
+
+  // M5: download the package as JSON (shared trip format).
+  r.get('/packages/:id/export', safe(async (req, res) => {
+    const pkg = await load(req, res);
+    if (!pkg) return;
+    res.setHeader('Content-Disposition', `attachment; filename="${pkg.trip.trip_id}.json"`);
+    res.json(pkg.trip);
+  }));
+
+  // What can be changed, with the real price difference of each choice.
+  r.get('/packages/:id/options', safe(async (req, res) => {
+    const pkg = await load(req, res);
+    if (pkg) res.json(listOptions(pkg.trip, catalog));
+  }));
+
+  // M6: change the package. Accepted -> saved and returned. Refused -> 422 with the reasons, nothing changes.
+  r.post('/packages/:id/changes', safe(async (req, res) => {
+    const pkg = await load(req, res);
+    if (!pkg) return;
+    if (pkg.status === 'BOOKED') return res.status(409).json({ ok: false, reasons: ['This package is already confirmed and cannot be changed.'] });
+    const result = applyChange(pkg.trip, req.body, catalog);
+    if (!result.ok) return res.status(422).json(result);
+    await store.savePackage({ ...pkg, trip: result.trip });
+    res.json({ ok: true, delta_inr: result.delta_inr, change_notes: result.notes, ...view({ ...pkg, trip: result.trip }) });
+  }));
+
+  // M7: confirm -> reservation number.
+  r.post('/packages/:id/confirm', safe(async (req, res) => {
+    const pkg = await load(req, res);
+    if (!pkg) return;
+    const result = await confirmPackage(pkg, catalog, store);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    res.json({ reference: result.reference, ...view({ ...pkg, trip: result.trip, status: 'BOOKED', reference: result.reference }) });
+  }));
+
+  // M7: open a reservation by its number. A wrong number is "not found".
+  r.get('/reservations/:reference', safe(async (req, res) => {
+    const found = isReference(req.params.reference) ? await store.getReservation(req.params.reference) : null;
+    if (!found) return res.status(404).json({ error: 'Reservation not found' });
+    res.json(view({ trip: found.trip, status: 'BOOKED', reference: found.reference }));
+  }));
+
+  r.get('/reservations/:reference/export', safe(async (req, res) => {
+    const found = isReference(req.params.reference) ? await store.getReservation(req.params.reference) : null;
+    if (!found) return res.status(404).json({ error: 'Reservation not found' });
+    res.setHeader('Content-Disposition', `attachment; filename="${found.reference}.json"`);
+    res.json(found.trip);
+  }));
 
   return r;
 }
