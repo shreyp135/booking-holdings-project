@@ -20,6 +20,7 @@ export default function App() {
 
   const [view, setView] = useState('landing'); // landing | options | builder | package | notice
   const [request, setRequest] = useState(null); // the validated request from the last plan
+  const [builderPkg, setBuilderPkg] = useState(null); // the self-built trip, kept when going to review and back
   const [options, setOptions] = useState([]);   // the packages offered for it
   const [pkg, setPkg] = useState(null);         // the package that is open
   const [notice, setNotice] = useState(null);   // planner said: over budget / no package
@@ -110,8 +111,11 @@ export default function App() {
     setOptions((list) => list.map((o) => (o.trip.trip_id === next.trip.trip_id ? { ...o, ...next } : o)));
   };
 
+  const startBuilder = () => { setBuilderPkg(null); go('builder'); };
+
   const back = () => {
     if (view === 'package') {
+      if (backTo === 'builder') setBuilderPkg(pkg);
       setPkg(null);
       go(backTo === 'options' && options.length ? 'options' : backTo === 'builder' ? 'builder' : 'landing');
     } else if (view === 'builder' && options.length) {
@@ -143,10 +147,10 @@ export default function App() {
       {loading && <BuildingScreen />}
 
       {view !== 'landing' && (
-        <Shell onBack={back} backLabel={backLabel} step={step} onBuild={view === 'options' ? () => go('builder') : undefined}>
+        <Shell onBack={back} backLabel={backLabel} step={step} onBuild={view === 'options' ? startBuilder : undefined}>
           <div key={view + (pkg?.trip.trip_id ?? '')} className="animate-fade-in">
-            {view === 'options' && <OptionsPage options={options} request={request} onOpen={(o) => open(o, 'options')} onBuild={() => go('builder')} />}
-            {view === 'builder' && <BuilderPage request={request} onCreated={(p) => open(p, 'builder')} />}
+            {view === 'options' && <OptionsPage options={options} request={request} onOpen={(o) => open(o, 'options')} onBuild={startBuilder} />}
+            {view === 'builder' && <BuilderPage request={request} initialPkg={builderPkg} onCreated={(p) => open(p, 'builder')} />}
             {view === 'package' && pkg && <PackageView pkg={pkg} onUpdate={update} />}
             {view === 'notice' && notice && <ResultNotice result={notice} onBack={() => go('landing')} />}
           </div>

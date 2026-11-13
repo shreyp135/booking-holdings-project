@@ -31,8 +31,11 @@ function Row({ title, sub, d, current, busy, action, image, label = 'Choose' }) 
 
 // Lists what the traveler can choose, each with its real price difference (G2).
 // Choosing something calls onChange(change, label); the backend re-checks the whole package.
-export default function ChangePanel({ tripId, version, onChange, busy, startTab = 'Cities' }) {
-  const [tab, setTab] = useState(startTab);
+// tabs: which tabs to offer. tab/hideTabs: let the parent control the tab (build-your-own page).
+// focus { city, date }: only show that city's hotels and attractions, and only that day's attraction times.
+export default function ChangePanel({ tripId, version, onChange, busy, startTab = 'Cities', tabs = TABS, tab: forcedTab, hideTabs = false, focus }) {
+  const [own, setTab] = useState(startTab);
+  const tab = forcedTab ?? own;
   const [options, setOptions] = useState(null);
   const [slot, setSlot] = useState({}); // attraction_id -> chosen date
 
@@ -49,10 +52,15 @@ export default function ChangePanel({ tripId, version, onChange, busy, startTab 
       </div>
     );
 
+  const shownAttractions = options.attractions
+    .filter((a) => !focus?.city || a.city === focus.city)
+    .map((a) => (focus?.date ? { ...a, slots: a.slots.filter((x) => x.date === focus.date) } : a))
+    .filter((a) => a.slots.length > 0);
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6">
-      <div className="mb-4 flex flex-wrap gap-2">
-        {TABS.map((t) => (
+      <div className={`mb-4 flex flex-wrap gap-2 ${hideTabs ? 'hidden' : ''}`}>
+        {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`rounded-lg px-4 py-2 text-sm font-semibold transition active:scale-95 ${tab === t ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{t}</button>
         ))}
@@ -72,7 +80,7 @@ export default function ChangePanel({ tripId, version, onChange, busy, startTab 
         </div>
       )}
 
-      {tab === 'Hotels' && Object.entries(options.hotels).map(([city, list]) => (
+      {tab === 'Hotels' && Object.entries(options.hotels).filter(([city]) => !focus?.city || city === focus.city).map(([city, list]) => (
         <div key={city} className="mb-4">
           <h4 className="font-bold text-blue-700">{city}</h4>
           <ul>
@@ -103,8 +111,8 @@ export default function ChangePanel({ tripId, version, onChange, busy, startTab 
 
       {tab === 'Attractions' && (
         <ul>
-          {options.attractions.length === 0 && <p className="text-sm text-slate-500">Nothing else can be added.</p>}
-          {options.attractions.map((a) => {
+          {shownAttractions.length === 0 && <p className="text-sm text-slate-500">Nothing else can be added{focus?.city ? ` in ${focus.city} on this day` : ''}.</p>}
+          {shownAttractions.map((a) => {
             const chosen = slot[a.attraction_id] ?? a.slots[0].date;
             const s = a.slots.find((x) => x.date === chosen) ?? a.slots[0];
             return (

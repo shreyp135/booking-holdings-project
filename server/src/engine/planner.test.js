@@ -14,10 +14,10 @@ const menonBody = {
 };
 const plan = (body) => planTrip(validateRequest(body, catalog).value, catalog);
 
-test('city plans for 6 nights in Japan: 3 + 18 + 6 = 27', () => {
+test('city plans for 6 nights in Japan: 18 + 6 = 24 (one-city stays are left out)', () => {
   const japan = catalog.countryByName.get('Japan');
   const plans = enumerateCityPlans(japan, 6, 2);
-  assert.equal(plans.length, 27);
+  assert.equal(plans.length, 24);
   for (const p of plans) {
     assert.equal(p.reduce((s, c) => s + c.nights, 0), 6);
     assert.ok(p.every((c) => c.nights >= 2));

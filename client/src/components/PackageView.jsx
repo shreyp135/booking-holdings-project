@@ -103,7 +103,7 @@ function Row({ entry, onRemove, busy, media }) {
   );
 }
 
-function DayPlan({ trip, onRemove, busy, media }) {
+function DayPlan({ trip, onRemove, busy, media, onEdit }) {
   const days = buildDays(trip);
   return (
     <div className="space-y-4">
@@ -116,9 +116,16 @@ function DayPlan({ trip, onRemove, busy, media }) {
               <h3 className="text-lg font-bold">{n >= 1 ? `Day ${n}` : 'Overnight flight'}</h3>
               <span className="text-sm text-slate-500">{fmtDay(date)}</span>
               {city && n >= 1 && <span className="ml-auto text-sm font-semibold text-blue-700">{city}</span>}
+              {onEdit && (
+                <button type="button" onClick={() => onEdit({ date, city, n, entries })} aria-label={`Edit ${n >= 1 ? `day ${n}` : 'the overnight flight'}`}
+                  className={`group relative flex h-9 w-9 items-center justify-center self-center rounded-full border border-slate-200 text-slate-500 transition hover:border-blue-700 hover:bg-blue-50 hover:text-blue-700 active:scale-90 ${city && n >= 1 ? '' : 'ml-auto'}`}>
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
+                  <span role="tooltip" className="pointer-events-none absolute -bottom-9 right-0 z-10 whitespace-nowrap rounded-md bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">Edit this day</span>
+                </button>
+              )}
             </header>
             {entries.length === 0 ? (
-              <p className="px-4 py-4 text-sm text-slate-400">Nothing planned yet. Add attractions in Customize.</p>
+              <p className="px-4 py-4 text-sm text-slate-400">Nothing planned yet. Use the edit icon to add attractions.</p>
             ) : (
               <ul className="divide-y divide-slate-100 px-4">
                 {entries.map((e, i) => (
@@ -167,7 +174,7 @@ function Summary({ trip, over, busy, onConfirm, booked }) {
   }));
 
   return (
-    <aside className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-20">
+    <aside className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-20 lg:self-start">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-slate-500">Total price</p>
@@ -204,7 +211,7 @@ function Summary({ trip, over, busy, onConfirm, booked }) {
             className="w-full rounded-lg bg-orange-500 py-3 font-bold text-white transition hover:bg-orange-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50">
             Confirm booking
           </button>
-          {over && <p className="text-xs text-slate-500">{onConfirm ? 'This package is over your budget. Customize it to bring it within budget, then confirm.' : 'This package is over your budget, so it cannot be booked.'}</p>}
+          {over && <p className="text-xs text-slate-500">{onConfirm ? 'This package is over your budget. Edit it to bring it within budget, then confirm.' : 'This package is over your budget, so it cannot be booked.'}</p>}
         </div>
       )}
     </aside>
@@ -221,17 +228,10 @@ const LABEL_CLS = {
   'Another option': 'bg-slate-100 text-slate-700',
 };
 
-// Photo grid: one large picture and up to four smaller ones, with "Show all photos".
+// Photo grid: one large picture and up to four smaller ones. Hover a photo to see its credit.
 function Gallery({ media }) {
-  const [all, setAll] = useState(false);
   const credits = useCredits();
   const g = media?.gallery ?? [];
-  useEffect(() => {
-    if (!all) return;
-    const esc = (e) => e.key === 'Escape' && setAll(false);
-    window.addEventListener('keydown', esc);
-    return () => window.removeEventListener('keydown', esc);
-  }, [all]);
   if (!g.length) return null;
   const n = g.length >= 5 ? 5 : g.length >= 3 ? 3 : g.length;
   const cell = (i) => {
@@ -241,40 +241,13 @@ function Gallery({ media }) {
     return i === 0 ? 'col-span-2 row-span-2' : 'col-span-1';
   };
   return (
-    <>
-      <div className="mt-4 grid h-[260px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl sm:h-[340px]">
-        {g.slice(0, n).map((src, i) => (
-          <button key={src} type="button" onClick={() => setAll(true)} title={creditLine(credits[src])} aria-label="Show all photos"
-            className={`relative overflow-hidden bg-slate-200 ${cell(i)}`}>
-            <img src={photo(src)} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 hover:scale-105" />
-            {i === n - 1 && (
-              <span className="absolute bottom-3 right-3 flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 shadow">
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true"><path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z" /></svg>
-                Show all photos
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-      {all && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in" onClick={() => setAll(false)}>
-          <div role="dialog" aria-modal="true" aria-label="All photos" onClick={(e) => e.stopPropagation()} className="flex max-h-[88vh] w-full max-w-4xl flex-col rounded-2xl bg-white p-5 shadow-2xl animate-pop">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-xl font-bold">All photos</h2>
-              <button type="button" onClick={() => setAll(false)} aria-label="Close" className="rounded-md px-2 py-1 text-2xl leading-none text-slate-500 hover:bg-slate-100">×</button>
-            </div>
-            <div className="grid grid-cols-1 gap-4 overflow-y-auto pr-1 sm:grid-cols-2">
-              {g.map((src) => (
-                <figure key={src}>
-                  <img src={photo(src)} alt="" loading="lazy" className="h-52 w-full rounded-xl object-cover" />
-                  <figcaption className="mt-1 text-xs text-slate-500">{creditLine(credits[src])}</figcaption>
-                </figure>
-              ))}
-            </div>
-          </div>
+    <div className="mt-4 grid h-[260px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl sm:h-[340px]">
+      {g.slice(0, n).map((src, i) => (
+        <div key={src} title={creditLine(credits[src])} className={`overflow-hidden bg-slate-200 ${cell(i)}`}>
+          <img src={photo(src)} alt="" loading="lazy" className="h-full w-full object-cover transition duration-500 hover:scale-105" />
         </div>
-      )}
-    </>
+      ))}
+    </div>
   );
 }
 
@@ -295,29 +268,39 @@ function Title({ trip, labels = [], media }) {
   );
 }
 
-// "Customize": one place to change cities, hotels, flights and attractions. Opens and closes smoothly.
-function Customize({ pkg, open, onToggle, onChange, busy, version }) {
-  const [seen, setSeen] = useState(open);
-  useEffect(() => { if (open) setSeen(true); }, [open]);
-  const own = pkg.meta?.labels?.includes('Build your own');
+// Edit one day: a window with what can change on that day (flights, the hotel, attractions) and the route.
+function DayEditor({ pkg, day, version, busy, onChange, onClose }) {
+  useEffect(() => {
+    const esc = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onClose]);
+  const hasFlight = day.entries.some((e) => e.kind === 'flight');
+  const tabs = [];
+  if (hasFlight) tabs.push('Flights');
+  if (day.city) tabs.push('Attractions', 'Hotels');
+  tabs.push('Cities');
   return (
-    <section className="rounded-xl border border-slate-200 bg-white">
-      <button type="button" onClick={onToggle} aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-slate-50">
-        <span>
-          <span className="block text-lg font-bold">Customize your package</span>
-          <span className="block text-sm text-slate-500">Change cities, hotels, flights or attractions. Each choice shows its price difference.</span>
-        </span>
-        <svg viewBox="0 0 24 24" className={`h-5 w-5 shrink-0 text-blue-700 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-      </button>
-      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-        <div className="overflow-hidden">
-          <div className="border-t border-slate-100 p-4">
-            {seen && <ChangePanel tripId={pkg.trip.trip_id} version={version} onChange={onChange} busy={busy} startTab={own ? 'Attractions' : 'Cities'} />}
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4 animate-fade-in" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Edit day" onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[88vh] w-full max-w-3xl flex-col rounded-2xl bg-white p-5 shadow-2xl animate-pop">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold">{day.n >= 1 ? `Edit Day ${day.n}` : 'Edit the overnight flight'}</h2>
+            <p className="text-sm text-slate-500">{fmtDay(day.date)}{day.city ? ` · ${day.city}` : ''}. Each choice shows its price difference, and the whole package is checked again.</p>
           </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md px-2 py-1 text-2xl leading-none text-slate-500 hover:bg-slate-100">×</button>
+        </div>
+        <div className="overflow-y-auto pr-1">
+          <ChangePanel tripId={pkg.trip.trip_id} version={version} onChange={onChange} busy={busy} tabs={tabs} startTab={tabs[0]}
+            focus={{ city: day.city, date: day.date }} />
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+          <p className="text-sm text-slate-600">Total <span className="font-bold tabular-nums">{inr(pkg.trip.total_inr)}</span></p>
+          <button type="button" onClick={onClose} className="rounded-lg bg-blue-700 px-6 py-2 font-semibold text-white transition hover:bg-blue-800 active:scale-95">Done</button>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -334,9 +317,8 @@ function CopyButton({ text }) {
 // An open package. pkg = { trip, status, reference, total_inr, budget_inr, balance_inr, notes, meta }.
 // onUpdate(next) is called after every accepted change and after confirming.
 export default function PackageView({ pkg, onUpdate }) {
-  const own = pkg.meta?.labels?.includes('Build your own');
   const booked = pkg.status === 'BOOKED';
-  const [open, setOpen] = useState(!!own && !booked); // a self-built itinerary starts with the choices open
+  const [editing, setEditing] = useState(null); // the day being edited
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
   const [toast, setToast] = useState(null);
@@ -363,7 +345,7 @@ export default function PackageView({ pkg, onUpdate }) {
     try {
       onUpdate(await api.confirm(trip.trip_id));
       setAsking(false);
-      setOpen(false);
+      setEditing(null);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
       setAsking(false);
@@ -397,12 +379,12 @@ export default function PackageView({ pkg, onUpdate }) {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
-          {!booked && <Customize pkg={pkg} open={open} onToggle={() => setOpen((o) => !o)} onChange={change} busy={busy} version={version} />}
-          <DayPlan trip={trip} busy={busy} media={pkg.media} onRemove={booked ? undefined : (it) => change({ type: 'REMOVE_ATTRACTION', attraction_id: it.catalog_id }, `${it.name} removed`)} />
+          <DayPlan trip={trip} busy={busy} media={pkg.media} onEdit={booked ? undefined : setEditing} onRemove={booked ? undefined : (it) => change({ type: 'REMOVE_ATTRACTION', attraction_id: it.catalog_id }, `${it.name} removed`)} />
         </div>
         <Summary trip={trip} over={over} busy={busy} booked={booked} onConfirm={() => setAsking(true)} />
       </div>
 
+      {editing && <DayEditor pkg={pkg} day={editing} version={version} busy={busy} onChange={change} onClose={() => setEditing(null)} />}
       {asking && <ConfirmDialog trip={trip} busy={busy} onCancel={() => setAsking(false)} onConfirm={confirm} />}
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>

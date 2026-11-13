@@ -29,5 +29,8 @@ export function enumerateCityPlans(country, nights, minPerCity) {
     }
   };
   walk([]);
-  return plans;
+  // This is a country visit, not a one-city stay: whenever the trip is long enough to visit two or more
+  // cities, plans that stay in a single city are left out.
+  const multi = plans.filter((p) => p.length >= 2);
+  return multi.length ? multi : plans;
 }

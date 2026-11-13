@@ -58,7 +58,7 @@ function Field({ label, error, children, className = '' }) {
 }
 
 const inputCls = (err) =>
-  `rounded-lg border bg-white px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-blue-500 ${
+  `rounded-lg border bg-white px-3 py-3 text-base outline-none focus:ring-2 focus:ring-blue-500 ${
     err ? 'border-red-500' : 'border-slate-300'
   }`;
 
@@ -106,7 +106,7 @@ function TravelersField({ adults, ages, rooms, onAdults, onChildren, onAge, onRo
     <div ref={box} className="relative flex flex-col gap-1 md:col-span-2">
       <label id="travelers-label" className="text-sm font-semibold text-slate-700">Travelers and rooms</label>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} aria-labelledby="travelers-label"
-        className={`flex items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2.5 text-left text-base outline-none transition focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-500' : open ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-300'}`}>
+        className={`flex items-center justify-between gap-3 rounded-lg border bg-white px-3 py-3 text-left text-base outline-none transition focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-500' : open ? 'border-blue-500 ring-2 ring-blue-200' : 'border-slate-300'}`}>
         <span className="flex items-center gap-2">
           <svg viewBox="0 0 24 24" className="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
@@ -251,9 +251,9 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
 
   return (
     <div className="relative isolate flex min-h-screen flex-col bg-white text-slate-800">
-      {/* the photo fills the top half of the page, the bottom half is white */}
-      <img src="/hero.jpg" alt="" aria-hidden="true" className="fixed inset-x-0 top-0 -z-20 h-1/2 w-full object-cover object-center" />
-      <div className="fixed inset-x-0 top-0 -z-10 h-1/2 bg-gradient-to-b from-blue-950/80 via-blue-900/45 to-blue-950/70" />
+      {/* the photo fills the top three quarters of the page, the rest is white */}
+      <img src="/hero.jpg" alt="" aria-hidden="true" className="fixed inset-x-0 top-0 -z-20 h-3/4 w-full object-cover object-center" />
+      <div className="fixed inset-x-0 top-0 -z-10 h-3/4 bg-gradient-to-b from-blue-950/80 via-blue-900/45 to-blue-950/70" />
 
       <header className="flex items-center px-5 py-3 text-white sm:px-8">
         <a href="/" className="text-2xl font-bold tracking-tight text-white drop-shadow">
@@ -269,7 +269,7 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
         </button>
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center gap-6 px-5 pb-6 sm:px-8">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 pb-4 pt-2 sm:px-8">
         <div className="text-white">
           <h1 className="max-w-5xl text-3xl font-bold leading-tight drop-shadow animate-fade-up md:text-4xl">
             Tell us where. We will plan the whole holiday.
@@ -279,8 +279,8 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
           </p>
         </div>
 
-        <form onSubmit={submit} noValidate style={{ animationDelay: '200ms' }} className="relative z-20 rounded-xl bg-white p-5 text-slate-800 shadow-2xl animate-fade-up">
-          <div className="grid gap-4 md:grid-cols-4">
+        <form onSubmit={submit} noValidate style={{ animationDelay: '200ms' }} className="relative z-20 rounded-2xl bg-white p-7 text-slate-800 shadow-2xl animate-fade-up">
+          <div className="grid gap-x-5 gap-y-6 md:grid-cols-4">
             <Field label="Departure city" error={err.departure_airport}>
               <select value={form.departure_airport} onChange={set('departure_airport')} className={inputCls(err.departure_airport)}>
                 <option value="">Select city</option>
@@ -316,7 +316,7 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
 
             <div className="flex items-end">
               <button type="submit" disabled={loading}
-                className="w-full rounded-lg bg-orange-500 px-4 py-2.5 text-base font-bold text-white transition hover:bg-orange-600 active:scale-95 disabled:opacity-60">
+                className="w-full rounded-lg bg-orange-500 px-4 py-3.5 text-lg font-bold text-white transition hover:bg-orange-600 active:scale-95 disabled:opacity-60">
                 {loading ? 'Building…' : 'Build my holiday'}
               </button>
             </div>
@@ -327,13 +327,13 @@ export default function Landing({ departureCities = [], countries = [], onSubmit
           )}
         </form>
 
-        <section aria-label="How it works">
+        <section aria-label="How it works" className="mt-auto">
           <h2 className="mb-3 text-lg font-bold text-slate-800">How it works</h2>
           <ol className="flex flex-col items-stretch gap-2 md:flex-row md:items-center">
             {STEPS.map((s, i) => (
-              <li key={s.title} className="flex flex-1 flex-col items-center gap-2 md:flex-row md:items-stretch">
+              <li key={s.title} className="flex flex-1 flex-col items-center gap-2 md:flex-row md:items-center">
                 <div style={{ animationDelay: `${i * 80}ms` }}
-                  className="w-full flex-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl animate-fade-up">
+                  className="w-full flex-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:h-28 transition duration-300 hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl animate-fade-up">
                   <div className="flex items-center gap-2">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 text-xs font-bold">{i + 1}</span>
                     <h3 className="font-semibold text-blue-700">{s.title}</h3>

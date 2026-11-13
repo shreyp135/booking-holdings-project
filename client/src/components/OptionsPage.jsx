@@ -52,11 +52,13 @@ function Card({ o, cover, credit, active, onSelect, onOpen, delay }) {
   return (
     <article
       onClick={active ? undefined : onSelect}
+      onMouseEnter={onSelect}
+      onFocus={active ? undefined : onSelect}
       onKeyDown={active ? undefined : (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSelect())}
       role={active ? undefined : 'button'} tabIndex={active ? undefined : 0}
       aria-label={active ? undefined : `${labels.join(', ')}: ${cityRoute(trip)}. Show this package.`}
       style={{ animationDelay: `${delay}ms` }}
-      className={`relative min-h-0 overflow-hidden rounded-3xl bg-slate-800 shadow-lg animate-fade-up transition-all duration-300 ${active ? '' : 'cursor-pointer hover:z-20 hover:-translate-y-2 hover:scale-x-[1.35] hover:scale-y-[1.03] hover:shadow-2xl max-md:hover:scale-x-100 max-md:hover:scale-y-110'}`}>
+      className={`relative min-h-0 overflow-hidden rounded-3xl border border-slate-200 bg-slate-800 shadow-sm animate-fade-up transition-shadow duration-500 ${active ? 'hover:shadow-2xl' : 'hover:shadow-lg'} ${active ? '' : 'cursor-pointer'}`}>
 
       {/* photo: the left half of the open card, the whole strip of a closed one */}
       {cover
@@ -70,7 +72,7 @@ function Card({ o, cover, credit, active, onSelect, onOpen, delay }) {
       {/* closed: label, city and price, centered both ways (turned sideways on wide screens) */}
       <div className={`absolute inset-0 flex flex-col items-center justify-center gap-3 p-3 text-center text-white transition-opacity duration-300 max-md:flex-row max-md:gap-4 ${active ? 'pointer-events-none opacity-0' : 'opacity-100 delay-200'}`}>
         <span className="rounded bg-white/90 px-2 py-0.5 text-xs font-bold text-slate-800 md:[writing-mode:vertical-rl] md:rotate-180">{labels[0] ?? 'Package'}</span>
-        <span className="text-2xl font-bold leading-tight drop-shadow md:[writing-mode:vertical-rl] md:rotate-180">{cityRoute(trip)}</span>
+        <span className="text-3xl font-bold leading-tight drop-shadow md:[writing-mode:vertical-rl] md:rotate-180">{cityRoute(trip)}</span>
         <span className="text-sm font-semibold tabular-nums drop-shadow md:[writing-mode:vertical-rl] md:rotate-180">{inr(o.total_inr)}</span>
       </div>
 
@@ -79,7 +81,7 @@ function Card({ o, cover, credit, active, onSelect, onOpen, delay }) {
         <div className="flex flex-wrap gap-2">
           {labels.map((l) => <span key={l} className={`rounded px-2 py-0.5 text-xs font-semibold ${LABEL_CLS[l] ?? LABEL_CLS['Another option']}`}>{l}</span>)}
         </div>
-        <h2 className="mt-3 text-2xl font-bold leading-tight text-blue-700">{cityRoute(trip)}</h2>
+        <h2 className="mt-3 text-4xl font-bold leading-tight text-blue-700">{cityRoute(trip)}</h2>
         <p className="text-sm text-slate-500">{nights} nights · {attractions} attraction{attractions === 1 ? '' : 's'} planned</p>
 
         <p className="mt-3 text-3xl font-bold tabular-nums">{active ? <AnimatedNumber value={o.total_inr} /> : inr(o.total_inr)}</p>
